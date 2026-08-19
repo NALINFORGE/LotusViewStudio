@@ -1,0 +1,14 @@
+{
+  "title": "Lotus Visual",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus Visual",
+        "description": "Nainstaluje integrovaný vizuální editor pro dashboardy Home Assistant."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus Visual je již nainstalován."
+    }
+  }
+}

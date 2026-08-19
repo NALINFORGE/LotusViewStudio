@@ -1,0 +1,18 @@
+{
+  "domain": "lotus_visual",
+  "name": "Lotus Visual",
+  "version": "0.9.6",
+  "config_flow": true,
+  "codeowners": [],
+  "dependencies": [
+    "frontend",
+    "http",
+    "lovelace",
+    "panel_custom",
+    "websocket_api"
+  ],
+  "iot_class": "local_push",
+  "integration_type": "service",
+  "single_config_entry": true,
+  "requirements": []
+}

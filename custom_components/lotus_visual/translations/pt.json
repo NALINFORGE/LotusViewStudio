@@ -1,0 +1,14 @@
+{
+  "title": "Lotus Visual",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus Visual",
+        "description": "Instala o editor visual unificado para os painéis do Home Assistant."
+      }
+    },
+    "abort": {
+      "already_configured": "O Lotus Visual já está instalado."
+    }
+  }
+}

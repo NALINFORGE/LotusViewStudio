@@ -1,0 +1,14 @@
+{
+  "title": "Lotus Visual",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus Visual",
+        "description": "Instaluje zintegrowany edytor wizualny pulpitów Home Assistant."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus Visual jest już zainstalowany."
+    }
+  }
+}

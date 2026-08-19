@@ -1,0 +1,14 @@
+{
+  "title": "Lotus Visual",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus Visual",
+        "description": "ติดตั้งตัวแก้ไขแบบภาพแบบรวมสำหรับแดชบอร์ด Home Assistant"
+      }
+    },
+    "abort": {
+      "already_configured": "ติดตั้ง Lotus Visual แล้ว"
+    }
+  }
+}

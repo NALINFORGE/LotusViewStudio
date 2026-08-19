@@ -1,0 +1,14 @@
+{
+  "title": "Lotus Visual",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus Visual",
+        "description": "Устанавливает единый визуальный редактор для панелей Home Assistant."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus Visual уже установлен."
+    }
+  }
+}

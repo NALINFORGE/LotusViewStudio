@@ -1,0 +1,14 @@
+{
+  "title": "Lotus Visual",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus Visual",
+        "description": "Installerer den integrerte visuelle redigereren for Home Assistant-dashbord."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus Visual er allerede installert."
+    }
+  }
+}

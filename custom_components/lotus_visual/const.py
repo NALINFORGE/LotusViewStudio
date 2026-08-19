@@ -1,0 +1,10 @@
+"""Constants for Lotus Visual."""
+
+DOMAIN = "lotus_visual"
+VERSION = "0.9.6"
+URL_BASE = "/lotus_visual_static"
+BRAND_URL = "/lotus_visual_brand"
+PANEL_PATH = "lotus-visual"
+PANEL_TITLE = "Lotus Visual"
+PANEL_ICON = "lotus:lotus"
+MODULE_URL = f"{URL_BASE}/lotus-visual.js?v={VERSION}"

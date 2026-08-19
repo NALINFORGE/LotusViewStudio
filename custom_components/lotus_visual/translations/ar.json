@@ -1,0 +1,14 @@
+{
+  "title": "Lotus Visual",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus Visual",
+        "description": "يثبّت المحرر المرئي الموحّد للوحات تحكم Home Assistant."
+      }
+    },
+    "abort": {
+      "already_configured": "تم تثبيت Lotus Visual بالفعل."
+    }
+  }
+}
