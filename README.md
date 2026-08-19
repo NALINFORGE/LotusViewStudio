@@ -23,3 +23,7 @@ The Home Assistant integration is located in:
 ## Support
 
 Use the GitHub issue tracker to report reproducible bugs or request enhancements.
+
+If Lotus Visual is useful to you and you would like to support the continued development, testing and maintenance of LotusLab projects, you can support the project on Ko-fi:
+
+[Support LotusLab on Ko-fi](https://ko-fi.com/lotuslab)
