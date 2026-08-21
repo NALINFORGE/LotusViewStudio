@@ -1,5 +1,4 @@
-import { LOTUS_VISUAL_VERSION } from "./lotus-core.js?v=0.9.6";
-import { lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.9.6";
+import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.10.9";
 
 const LOTUS_VIEW_TYPE = "custom:lotus-visual-layout";
 const LOTUS_VIEW_LABEL = "Lotus Visual";
@@ -325,14 +324,8 @@ const patchBackgroundEditor = async () => {
   });
 };
 
-Promise.all([patchSelectSelector(), patchBackgroundEditor()]).then(() => {
-  console.info(
-    `%c LOTUS VISUAL VIEW BRIDGE %c v${LOTUS_VISUAL_VERSION} `,
-    "color:white;background:#00897b;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px;",
-    "color:#00897b;background:#e0f2f1;font-weight:700;padding:2px 6px;border-radius:0 4px 4px 0;",
-  );
-}).catch((error) => {
-  console.error("[Lotus Visual] Impossible d'installer les extensions de l'éditeur de vue.", error);
+Promise.all([patchSelectSelector(), patchBackgroundEditor()]).catch((error) => {
+  lotusDebug("Unable to install the view-editor extensions", error);
 });
 
 export { LOTUS_VIEW_TYPE };

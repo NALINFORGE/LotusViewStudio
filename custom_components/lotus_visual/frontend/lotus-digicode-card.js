@@ -1,5 +1,5 @@
 /*
- * Lotus Digicode 1.3.4
+ * Lotus Digicode 1.3.6
  * Configurable keypad / PIN validation card for Lotus Visual.
  *
  * Three PIN security levels are supported:
@@ -8,10 +8,10 @@
  * 3) application-layer RSA-OAEP transport + server-side salted PIN hash.
  */
 
-import { deepClone, clamp } from "./lotus-core.js?v=0.9.6";
-import { lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.9.6";
+import { deepClone, clamp } from "./lotus-core.js?v=0.10.9";
+import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.10.9";
 
-const LOTUS_DIGICODE_VERSION = "1.3.4";
+const LOTUS_DIGICODE_VERSION = "1.3.6";
 const LOTUS_DIGICODE_TYPE = "custom:lotus-digicode-card";
 const DIGICODE_SECURITY_MODES = Object.freeze({
   FRONTEND: "frontend_entity",
@@ -540,6 +540,7 @@ class LotusDigicodeCard extends HTMLElement {
   set hass(hass) {
     const firstHass = !this._hass;
     this._hass = hass;
+    lotusSetHass(hass);
     if (firstHass) this._loadServerSecurityStatus();
     this._refreshSourceStatus();
     this._refreshSymbolImages();
@@ -1091,7 +1092,7 @@ class LotusDigicodeCard extends HTMLElement {
           );
         }
       }).catch((error) => {
-        console.warn("[Lotus Digicode] Impossible de résoudre l’image de touche", source, error);
+        lotusDebug("Unable to resolve keypad image", source, error);
       }).finally(() => {
         this._mediaImagePending.delete(source);
         if (this.isConnected) this._refreshSymbolImages();
@@ -1122,7 +1123,8 @@ class LotusDigicodeCard extends HTMLElement {
       const image = document.createElement("img");
       image.className = "key-symbol-image";
       image.dataset.source = visual.value;
-      image.alt = `Touche ${digit}`;
+      image.alt = "";
+      image.setAttribute("aria-hidden", "true");
       const url = this._displayImageUrl(visual.value);
       if (url) image.src = url;
       container.appendChild(image);
@@ -1162,11 +1164,11 @@ class LotusDigicodeCard extends HTMLElement {
     content.className = "key-content";
     if (item.kind === "digit") {
       this._appendDigitVisual(content, item.digit);
-      button.setAttribute("aria-label", `Chiffre ${item.digit}`);
+      button.setAttribute("aria-label", String(item.digit));
     } else {
       const iconName = item.kind === "backspace" ? this._config.backspace.icon : this._config.clear.icon;
       if (iconName) appendVisualLabel(content, iconName);
-      button.setAttribute("aria-label", item.kind === "backspace" ? "Effacer le dernier chiffre" : "Effacer le code saisi");
+      button.setAttribute("aria-label", lotusT(item.kind === "backspace" ? "Effacer le dernier chiffre" : "Effacer le code saisi"));
     }
     button.append(surface, content);
     return button;
@@ -1313,6 +1315,8 @@ class LotusDigicodeCardEditor extends HTMLElement {
     this._serverSecurityStatus = { loaded: false, configured: false, length: 0, mode: null, pin_id: "", error: "" };
     this._serverStatusToken = 0;
     this._lastSaveValiditySignature = "";
+    this._validityEventRaf = 0;
+    this._pendingValidityDetail = null;
   }
 
   connectedCallback() {
@@ -1323,12 +1327,29 @@ class LotusDigicodeCardEditor extends HTMLElement {
   disconnectedCallback() {
     this._previewResizeObserver.disconnect();
     this._stopResizeListeners();
+    if (this._validityEventRaf) cancelAnimationFrame(this._validityEventRaf);
+    this._validityEventRaf = 0;
+    this._pendingValidityDetail = null;
   }
 
   set hass(hass) {
     const firstHass = !this._hass;
     this._hass = hass;
-    this._syncPreview();
+    lotusSetHass(hass);
+
+    // Home Assistant may call setConfig() before assigning hass. In that case
+    // all editor controls were previously created with hass === undefined and
+    // never received the real instance afterwards. Rebuild once on the first
+    // hass assignment, then only refresh bindings on subsequent state updates.
+    if (firstHass && this.isConnected) {
+      this._render();
+    } else {
+      this.shadowRoot?.querySelectorAll("ha-form, ha-selector").forEach((field) => {
+        field.hass = hass;
+      });
+      this._syncPreview();
+    }
+
     if (firstHass) this._loadEditorServerStatus();
     this._updateCodeStatus();
     this._notifySaveValidity();
@@ -1394,26 +1415,145 @@ class LotusDigicodeCardEditor extends HTMLElement {
   }
 
   _formField(parent, path, label, selector, value, onChange, context = undefined) {
+    // 0.9.13: connect directly to Home Assistant's selector component.
+    //
+    // The former ha-form wrapper nests the selected value in a temporary
+    // { value: ... } form object and re-emits a second value-changed event.
+    // That indirection made the Digicode controls vulnerable to frontend/form
+    // changes introduced while the i18n layer was added.  ha-selector is the
+    // native component used by ha-form internally and exposes the technical
+    // value directly. Translation therefore touches the visible label only.
+    if (customElements.get("ha-selector")) {
+      const field = document.createElement("ha-selector");
+      field.className = "native-field";
+      field.hass = this._hass;
+      field.selector = selector;
+      field.value = value;
+      field.label = lotusT(label);
+      field.required = false;
+      if (context) field.context = context;
+      field.dataset.fieldPath = path;
+      field.addEventListener("value-changed", (event) => {
+        // Do not let a raw selector event escape the card editor. Home
+        // Assistant must receive only Lotus' config-changed event from _commit.
+        event.stopPropagation();
+        onChange(event.detail?.value);
+      });
+      parent.appendChild(field);
+      return field;
+    }
+
+    // Compatibility fallback for frontends where ha-selector has not yet been
+    // registered but ha-form is available. Keep the legacy, proven contract.
     if (customElements.get("ha-form")) {
       const form = document.createElement("ha-form");
       form.className = "native-field";
       form.hass = this._hass;
       form.data = { value };
-      form.schema = [{ name: "value", required: false, selector: lotusLocalizeSelector(selector) }];
+      form.schema = [{ name: "value", required: false, selector }];
       if (context) form.context = context;
       form.computeLabel = () => lotusT(label);
       form.dataset.fieldPath = path;
-      form.addEventListener("value-changed", (event) => onChange(event.detail?.value?.value));
+      form.addEventListener("value-changed", (event) => {
+        event.stopPropagation();
+        onChange(event.detail?.value?.value);
+      });
       parent.appendChild(form);
       return form;
     }
+
+    // Last-resort HTML fallback. Selectors remain usable even if Home
+    // Assistant's custom elements are temporarily unavailable while loading.
     const wrap = document.createElement("label");
     wrap.className = "fallback-field";
+    wrap.dataset.fieldPath = path;
     const span = document.createElement("span");
     span.textContent = lotusT(label);
+
+    if (selector?.select?.options) {
+      const input = document.createElement("select");
+      for (const option of selector.select.options) {
+        const item = typeof option === "object"
+          ? option
+          : { value: String(option), label: String(option) };
+        const node = document.createElement("option");
+        node.value = String(item.value ?? "");
+        node.textContent = String(item.label ?? item.value ?? "");
+        input.appendChild(node);
+      }
+      input.value = value ?? "";
+      input.addEventListener("change", () => onChange(input.value));
+      wrap.append(span, input);
+      parent.appendChild(wrap);
+      return wrap;
+    }
+
+    if (selector?.entity) {
+      const input = document.createElement("select");
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = "—";
+      input.appendChild(empty);
+      const filters = Array.isArray(selector.entity.filter)
+        ? selector.entity.filter
+        : selector.entity.filter ? [selector.entity.filter] : [];
+      const domains = new Set(filters.flatMap((filter) => {
+        const domain = filter?.domain;
+        return Array.isArray(domain) ? domain : domain ? [domain] : [];
+      }));
+      const ids = Object.keys(this._hass?.states || {})
+        .filter((entityId) => !domains.size || domains.has(entityId.split(".", 1)[0]))
+        .sort((a, b) => a.localeCompare(b));
+      for (const entityId of ids) {
+        const node = document.createElement("option");
+        node.value = entityId;
+        node.textContent = this._hass?.states?.[entityId]?.attributes?.friendly_name
+          ? `${this._hass.states[entityId].attributes.friendly_name} (${entityId})`
+          : entityId;
+        input.appendChild(node);
+      }
+      input.value = value ?? "";
+      input.addEventListener("change", () => onChange(input.value));
+      wrap.append(span, input);
+      parent.appendChild(wrap);
+      return wrap;
+    }
+
     const input = document.createElement("input");
     input.value = value ?? "";
     input.addEventListener("change", () => onChange(input.value));
+    wrap.append(span, input);
+    parent.appendChild(wrap);
+    return wrap;
+  }
+
+  _nativeSelectField(parent, path, label, value, options, onChange) {
+    // Critical configuration fields use a browser-native select. This keeps
+    // their technical values completely outside Home Assistant's ha-form /
+    // ha-selector event machinery while retaining Lotus translations for the
+    // visible labels. It is intentionally simple and deterministic.
+    const wrap = document.createElement("label");
+    wrap.className = "fallback-field lotus-native-select-field";
+    wrap.dataset.fieldPath = path;
+
+    const span = document.createElement("span");
+    span.textContent = lotusT(label);
+
+    const input = document.createElement("select");
+    input.dataset.fieldPath = path;
+    for (const [technicalValue, visibleLabel] of options) {
+      const option = document.createElement("option");
+      option.value = String(technicalValue ?? "");
+      option.textContent = lotusT(String(visibleLabel ?? technicalValue ?? ""));
+      input.appendChild(option);
+    }
+    input.value = String(value ?? "");
+    input.addEventListener("change", (event) => {
+      event.stopPropagation();
+      const nextValue = String(input.value ?? "");
+      onChange(nextValue);
+    });
+
     wrap.append(span, input);
     parent.appendChild(wrap);
     return wrap;
@@ -1561,11 +1701,29 @@ class LotusDigicodeCardEditor extends HTMLElement {
     this._updateSaveGuard(null, validation);
     if (signature === this._lastSaveValiditySignature) return validation;
     this._lastSaveValiditySignature = signature;
-    this.dispatchEvent(new CustomEvent(DIGICODE_VALIDITY_EVENT, {
-      bubbles: true,
-      composed: true,
-      detail: validation,
-    }));
+
+    // IMPORTANT: never force the Home Assistant edit dialog to update in the
+    // same JavaScript turn as config-changed. HuiElementEditor first stores the
+    // new custom-card config, then propagates it to hui-dialog-edit-card from
+    // its Lit updateComplete promise. A synchronous validity event can make our
+    // dialog bridge request a render while the dialog still owns the previous
+    // config; HA then calls setConfig(oldConfig) on this editor and the security
+    // selector appears to jump back to level 1. Defer/coalesce validity events
+    // to the next animation frame, after HA's config propagation microtasks.
+    this._pendingValidityDetail = validation;
+    if (!this._validityEventRaf) {
+      this._validityEventRaf = requestAnimationFrame(() => {
+        this._validityEventRaf = 0;
+        const detail = this._pendingValidityDetail || this.getSaveValidation();
+        this._pendingValidityDetail = null;
+        if (!this.isConnected) return;
+        this.dispatchEvent(new CustomEvent(DIGICODE_VALIDITY_EVENT, {
+          bubbles: true,
+          composed: true,
+          detail,
+        }));
+      });
+    }
     return validation;
   }
 
@@ -1603,7 +1761,7 @@ class LotusDigicodeCardEditor extends HTMLElement {
     input.inputMode = "numeric";
     input.autocomplete = "new-password";
     input.maxLength = 12;
-    input.placeholder = "PIN (1 à 12 chiffres)";
+    input.placeholder = lotusT("PIN (1 à 12 chiffres)");
     input.value = this._pendingServerPin;
     input.addEventListener("input", () => {
       input.value = input.value.replace(/\D/g, "").slice(0, 12);
@@ -1749,7 +1907,7 @@ class LotusDigicodeCardEditor extends HTMLElement {
   }
 
   _renderSecuritySource(parent) {
-    this._select(parent, "security.mode", "Niveau de sécurité du PIN", this._securityMode(), [
+    this._nativeSelectField(parent, "security.mode", "Niveau de sécurité du PIN", this._securityMode(), [
       [DIGICODE_SECURITY_MODES.FRONTEND, "Niveau 1 — Entité Home Assistant (compatibilité)"],
       [DIGICODE_SECURITY_MODES.SERVER_PLAIN, "Niveau 2 — PIN côté serveur, stocké en clair"],
       [DIGICODE_SECURITY_MODES.SERVER_ENCRYPTED, "Niveau 3 — PIN chiffré navigateur → serveur + hash au repos"],
@@ -1822,11 +1980,40 @@ class LotusDigicodeCardEditor extends HTMLElement {
   }
 
   _codeEntity(parent) {
-    this._formField(parent, "code_entity", "Nombre Home Assistant contenant le code", {
-      entity: { filter: [{ domain: ["input_number"] }] },
-    }, this._config.code_entity || undefined, (value) => {
-      this._commit((config) => { config.code_entity = String(value ?? ""); });
-    });
+    const current = String(this._config.code_entity ?? "");
+    const options = [["", "—"]];
+    const states = this._hass?.states || {};
+    const inputNumbers = Object.keys(states)
+      .filter((entityId) => entityId.startsWith("input_number."))
+      .sort((a, b) => {
+        const an = String(states[a]?.attributes?.friendly_name || a);
+        const bn = String(states[b]?.attributes?.friendly_name || b);
+        return an.localeCompare(bn);
+      });
+
+    // Preserve an already configured entity even if it is temporarily
+    // unavailable, so opening the editor can never silently clear the PIN
+    // source.
+    if (current && !inputNumbers.includes(current)) inputNumbers.unshift(current);
+
+    for (const entityId of inputNumbers) {
+      const friendlyName = states[entityId]?.attributes?.friendly_name;
+      options.push([
+        entityId,
+        friendlyName ? `${friendlyName} (${entityId})` : entityId,
+      ]);
+    }
+
+    this._nativeSelectField(
+      parent,
+      "code_entity",
+      "Nombre Home Assistant contenant le code",
+      current,
+      options,
+      (value) => {
+        this._commit((config) => { config.code_entity = String(value ?? ""); });
+      },
+    );
     const status = document.createElement("div");
     status.className = "code-status";
     status.dataset.codeStatus = "1";
@@ -2331,13 +2518,14 @@ class LotusDigicodeCardEditor extends HTMLElement {
     for (const edge of ["top", "right", "bottom", "left"]) {
       const handle = document.createElement("div");
       handle.className = `resize-handle ${edge}`;
-      handle.title = `Redimensionner par le côté ${edge}`;
+      const edgeLabel = { top:"Haut", right:"Droite", bottom:"Bas", left:"Gauche" }[edge];
+      handle.title = `${lotusT("Redimensionner")} · ${lotusT(edgeLabel)}`;
       handle.addEventListener("pointerdown", (event) => this._startResize(edge, event));
       shell.appendChild(handle);
     }
     const sizeBadge = document.createElement("div");
     sizeBadge.className = "size-badge";
-    sizeBadge.textContent = `L ${this._config.design.width.toFixed(0)} · H ${this._config.design.height.toFixed(0)}`;
+    sizeBadge.textContent = `${lotusT("L")} ${this._config.design.width.toFixed(0)} · ${lotusT("H")} ${this._config.design.height.toFixed(0)}`;
     shell.appendChild(sizeBadge);
 
     previewFrame.appendChild(shell);
@@ -2370,6 +2558,8 @@ class LotusDigicodeCardEditor extends HTMLElement {
       .native-field { display:block; width:100%; margin:10px 0; }
       .fallback-field { display:grid; gap:5px; margin:10px 0; font-size:12px; }
       .fallback-field input { box-sizing:border-box; width:100%; min-height:40px; border:1px solid var(--divider-color); border-radius:8px; padding:8px; background:var(--card-background-color,#fff); color:inherit; }
+      .lotus-native-select-field select { box-sizing:border-box; width:100%; min-height:44px; border:1px solid var(--divider-color,rgba(127,127,127,.35)); border-radius:8px; padding:8px 10px; background:var(--card-background-color,#fff); color:var(--primary-text-color,#212121); font:inherit; }
+      .lotus-native-select-field select:focus { outline:2px solid var(--primary-color,#03a9f4); outline-offset:1px; }
       .security-help { margin:10px 0; padding:10px 12px; border-radius:10px; background:var(--secondary-background-color,#f5f5f5); font-size:12px; line-height:1.45; }
       .security-help strong { display:block; margin-bottom:5px; color:var(--primary-text-color,#212121); }
       .security-help ol { margin:0; padding-left:20px; }
@@ -2437,9 +2627,3 @@ window.LotusDigicode = Object.assign(window.LotusDigicode || {}, {
   type: LOTUS_DIGICODE_TYPE,
   getStubConfig: () => clone(baseConfig()),
 });
-
-console.info(
-  `%c LOTUS DIGICODE %c v${LOTUS_DIGICODE_VERSION} `,
-  "color:white;background:#6a1b9a;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px;",
-  "color:#6a1b9a;background:#f3e5f5;font-weight:700;padding:2px 6px;border-radius:0 4px 4px 0;",
-);

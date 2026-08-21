@@ -4,13 +4,13 @@ import {
   LOTUS_EXTRA_REPLACEMENTS,
   LOTUS_EXTRA_SELECTOR_LABELS,
   LOTUS_RTL_LANGUAGES,
-} from "./lotus-i18n-extra.js?v=0.9.6";
+} from "./lotus-i18n-extra.js?v=0.10.9";
 import {
   LOTUS_EUROPE_LANGUAGES,
   LOTUS_EUROPE_EXACT,
   LOTUS_EUROPE_REPLACEMENTS,
   LOTUS_EUROPE_SELECTOR_LABELS,
-} from "./lotus-i18n-europe.js?v=0.9.6";
+} from "./lotus-i18n-europe.js?v=0.10.9";
 
 /*
  * Lotus Visual internationalization core.
@@ -18,7 +18,7 @@ import {
  * a per-user manual override persisted by the Lotus Visual backend.
  */
 
-export const LOTUS_I18N_VERSION = "0.9.6";
+export const LOTUS_I18N_VERSION = "0.10.9";
 
 export const LOTUS_LANGUAGES = Object.freeze([
   { value: "auto", nativeName: "Automatique — Home Assistant", englishName: "Automatic — Home Assistant" },
@@ -85,7 +85,6 @@ const EXACT_EN = {
   "Aucune vue": "No view",
   "Ouvrir cette vue": "Open this view",
   "Convertir cette vue en vue Lotus Visual": "Convert this view to a Lotus Visual view",
-  "Nouvelle vue": "New view",
   "Vue introuvable": "View not found",
   "Vue Lotus": "Lotus view",
   "Vue sans défilement : tout afficher": "No scrolling: show everything",
@@ -99,12 +98,83 @@ const EXACT_EN = {
   "Ouvrir l’éditeur YAML Home Assistant": "Open the Home Assistant YAML editor",
   "L’éditeur YAML natif Home Assistant n’est pas disponible dans ce contexte.": "The native Home Assistant YAML editor is not available in this context.",
   "Ajouter une carte": "Add a card",
+  "Choisissez un outil Lotus ou une carte Home Assistant.": "Choose a Lotus tool or a Home Assistant card.",
   "Carte ajoutée": "Card added",
   "Modifier la carte": "Edit card",
   "Dupliquer la carte": "Duplicate card",
+  "Copier la carte": "Copy card",
+  "Coller la carte copiée": "Paste copied card",
+  "Carte copiée": "Card copied",
+  "Carte collée": "Card pasted",
+  "Aucune carte copiée à coller.": "No copied card to paste.",
+  "Impossible de copier la carte.": "Unable to copy the card.",
+  "Impossible de coller la carte copiée.": "Unable to paste the copied card.",
   "Carte dupliquée": "Card duplicated",
   "Supprimer la carte": "Delete card",
   "Déplacer vers un autre onglet": "Move to another tab",
+  "Gérer les calques": "Manage layers",
+  "Fermer la gestion des calques": "Close layer manager",
+  "Calques de l’onglet actif": "Layers in active tab",
+  "Masquer les calques au-dessus de la sélection": "Hide layers above selection",
+  "Afficher tous les calques": "Show all layers",
+  "Aucune carte dans cet onglet.": "No cards in this tab.",
+  "Afficher ce calque": "Show this layer",
+  "Masquer ce calque": "Hide this layer",
+  "Sélectionner ce calque": "Select this layer",
+  "Plan": "Layer",
+  "masqué": "hidden",
+  "Calques": "Layers",
+  "Calque": "Layer",
+  "calques": "layers",
+  "Carte sélectionnée": "Selected card",
+  "Actions de la carte": "Card actions",
+  "Ajouter un calque": "Add layer",
+  "Supprimer le calque actif s’il est vide": "Delete the active layer if it is empty",
+  "Reculer le calque actif": "Move active layer backward",
+  "Avancer le calque actif": "Move active layer forward",
+  "Ajouter la carte au calque de travail": "Add card to working layer",
+  "Retirer la carte de son calque et la replacer dans le Calque 1": "Remove card from its layer and return it to Layer 1",
+  "Déplacer la carte vers un autre calque": "Move card to another layer",
+  "Calque de travail actif": "Active working layer",
+  "Travailler dans ce calque": "Work in this layer",
+  "Afficher ce calque dans l’éditeur": "Show this layer in the editor",
+  "Masquer ce calque dans l’éditeur": "Hide this layer in the editor",
+  "Déverrouiller ce calque": "Unlock this layer",
+  "Verrouiller ce calque": "Lock this layer",
+  "Nom du calque": "Layer name",
+  "Définir comme calque de travail": "Set as working layer",
+  "Renommer le calque": "Rename layer",
+  "verrouillé": "locked",
+  "Déplacer les cartes vers un calque": "Move cards to a layer",
+  "Déplacer la carte vers un calque": "Move card to a layer",
+  "Sélection": "Selection",
+  "Calque de la sélection": "Selection layer",
+  "Édition": "Editing",
+  "Position et alignement": "Position and alignment",
+  "Dimensions": "Dimensions",
+  "Ordre d’affichage": "Display order",
+  "Répartition": "Distribution",
+  "Gestion de la sélection": "Selection management",
+  "{count} cartes sélectionnées": "{count} cards selected",
+  "Supprimer {count} cartes sélectionnées": "Delete {count} selected cards",
+  "Supprimer {count} cartes sélectionnées ?": "Delete {count} selected cards?",
+  "Suppression de {count} cartes…": "Deleting {count} cards…",
+  "{count} cartes supprimées": "{count} cards deleted",
+  "Ajouter les cartes sélectionnées au calque de travail": "Add selected cards to the working layer",
+  "Retirer les cartes sélectionnées de leur calque et les replacer dans le Calque 1": "Remove selected cards from their layer and return them to Layer 1",
+  "Déplacer les cartes sélectionnées vers un autre calque": "Move selected cards to another layer",
+  "Carte ajoutée au calque « {layer} »": "Card added to layer “{layer}”",
+  "Cartes sélectionnées ajoutées au calque « {layer} »": "Selected cards added to layer “{layer}”",
+  "Carte replacée dans « {layer} »": "Card returned to “{layer}”",
+  "Cartes sélectionnées replacées dans « {layer} »": "Selected cards returned to “{layer}”",
+  "Carte déplacée vers « {layer} »": "Card moved to “{layer}”",
+  "Cartes sélectionnées déplacées vers « {layer} »": "Selected cards moved to “{layer}”",
+  "Outils de l’éditeur Lotus Visual": "Lotus Visual editor tools",
+  "Calques et outils de sélection": "Layers and selection tools",
+  "Redimensionner la barre latérale": "Resize sidebar",
+  "Interaction": "Interaction",
+  "En mode blocage, lorsqu’un slider est visible dans une vue Lotus Visual, toutes les cartes et commandes situées derrière deviennent inaccessibles. Le slider reste le seul élément interactif jusqu’à sa disparition.": "When blocking mode is enabled and a slider is visible in a Lotus Visual view, all cards and controls behind it become inaccessible. The slider remains the only interactive element until it disappears.",
+  "Bloquer tous les autres clics pendant l’affichage du slider": "Block all other clicks while the slider is displayed",
   "Déplacer la carte vers un onglet": "Move card to a tab",
   "Onglet actuel": "Current tab",
   "Configurer les onglets de la vue": "Configure view tabs",
@@ -341,6 +411,16 @@ const EXACT_EN = {
   "Action au double clic": "Double-tap action",
   "Déclarer cette cellule comme cellule principale": "Set this cell as the primary cell",
   "Glissez une cellule sur une autre pour permuter leur contenu.": "Drag a cell onto another to swap their contents.",
+  "Permuter la cellule {source} avec la cellule {target}": "Swap cell {source} with cell {target}",
+  "Déplacer la cellule {source} au-dessus de la cellule cible": "Move cell {source} over the target cell",
+  "Cellules {source} et {target} permutées.": "Cells {source} and {target} swapped.",
+  "Cellules fusionnées · contenu conservé : cellule {cell}.": "Cells merged · content kept: cell {cell}.",
+  "Séparation verticale sélectionnée · {value} %.": "Vertical divider selected · {value}%.",
+  "Séparation horizontale sélectionnée · {value} %.": "Horizontal divider selected · {value}%.",
+  "Séparation réglée précisément à {value} %.": "Divider set precisely to {value}%.",
+  "Carré magnétique · {targets}": "Square snap · {targets}",
+  "Carré magnétique · {targets} · {value} %": "Square snap · {targets} · {value}%",
+  "Alignement magnétique · {value} %": "Alignment snap · {value}%",
   "Sélectionnez au moins deux cellules.": "Select at least two cells.",
   "La sélection doit former un rectangle continu.": "The selection must form a continuous rectangle.",
   "Sélection incomplète.": "Incomplete selection.",
@@ -351,8 +431,8 @@ const EXACT_EN = {
   "Modifier uniquement la largeur": "Change width only",
   "Modifier uniquement la hauteur": "Change height only",
   "Modifier largeur et hauteur": "Change width and height",
-  "Annuler": "Undo",
-  "Rétablir": "Redo",
+  "Annuler la dernière modification": "Undo last change",
+  "Rétablir la modification": "Redo change",
   "Sélectionner le contour": "Select frame",
   "Diviser verticalement": "Split vertically",
   "Diviser horizontalement": "Split horizontally",
@@ -386,6 +466,11 @@ const EXACT_EN = {
   "Icône d’arrivée": "End icon",
   "Icône droite / arrivée": "Right / end icon",
   "Icône du bouton": "Thumb icon",
+  "Afficher un fond derrière l’icône": "Show a background behind the icon",
+  "Couleur du fond de l’icône": "Icon background color",
+  "Opacité du fond (%)": "Background opacity (%)",
+  "Taille du fond (%)": "Background size (%)",
+  "Arrondi du fond (%)": "Background rounding (%)",
   "Texte": "Text",
   "Texte au repos": "Idle text",
   "Texte lorsque le seuil est atteint": "Text when threshold is reached",
@@ -516,6 +601,7 @@ const EXACT_EN = {
   " Les largeurs peuvent être harmonisées.": " Widths can be matched.",
   "Couleur au départ": "Start color",
   "Couleur à l’arrivée": "End color",
+  "Glisser pour valider": "Slide to confirm",
   "Relâcher pour valider": "Release to confirm",
   "Taille de l’icône (%)": "Icon size (%)",
   "Couleur liée à la position du curseur": "Color linked to slider position",
@@ -532,6 +618,7 @@ const EXACT_EN = {
   "Texte / caractère": "Text / character",
   "Code indisponible.": "Code unavailable.",
   "Icône Home Assistant": "Home Assistant icon",
+  "Effacer le dernier chiffre": "Delete last digit",
   "Effacer le code saisi": "Clear entered code",
   "PIN (1 à 12 chiffres)": "PIN (1 to 12 digits)",
   "Validation côté serveur.": "Server-side validation.",
@@ -651,12 +738,83 @@ const EXACT_DE = {
   "Ouvrir l’éditeur YAML Home Assistant": "Home-Assistant-YAML-Editor öffnen",
   "L’éditeur YAML natif Home Assistant n’est pas disponible dans ce contexte.": "Der native Home-Assistant-YAML-Editor ist in diesem Kontext nicht verfügbar.",
   "Ajouter une carte": "Karte hinzufügen",
+  "Choisissez un outil Lotus ou une carte Home Assistant.": "Wählen Sie ein Lotus-Werkzeug oder eine Home-Assistant-Karte aus.",
   "Carte ajoutée": "Karte hinzugefügt",
   "Modifier la carte": "Karte bearbeiten",
   "Dupliquer la carte": "Karte duplizieren",
+  "Copier la carte": "Karte kopieren",
+  "Coller la carte copiée": "Kopierte Karte einfügen",
+  "Carte copiée": "Karte kopiert",
+  "Carte collée": "Karte eingefügt",
+  "Aucune carte copiée à coller.": "Keine kopierte Karte zum Einfügen.",
+  "Impossible de copier la carte.": "Die Karte konnte nicht kopiert werden.",
+  "Impossible de coller la carte copiée.": "Die kopierte Karte konnte nicht eingefügt werden.",
   "Carte dupliquée": "Karte dupliziert",
   "Supprimer la carte": "Karte löschen",
   "Déplacer vers un autre onglet": "In einen anderen Tab verschieben",
+  "Gérer les calques": "Ebenen verwalten",
+  "Fermer la gestion des calques": "Ebenenverwaltung schließen",
+  "Calques de l’onglet actif": "Ebenen des aktiven Tabs",
+  "Masquer les calques au-dessus de la sélection": "Ebenen über der Auswahl ausblenden",
+  "Afficher tous les calques": "Alle Ebenen anzeigen",
+  "Aucune carte dans cet onglet.": "Keine Karten in diesem Tab.",
+  "Afficher ce calque": "Diese Ebene anzeigen",
+  "Masquer ce calque": "Diese Ebene ausblenden",
+  "Sélectionner ce calque": "Diese Ebene auswählen",
+  "Plan": "Ebene",
+  "masqué": "ausgeblendet",
+  "Calques": "Ebenen",
+  "Calque": "Ebene",
+  "calques": "Ebenen",
+  "Carte sélectionnée": "Ausgewählte Karte",
+  "Actions de la carte": "Kartenaktionen",
+  "Ajouter un calque": "Ebene hinzufügen",
+  "Supprimer le calque actif s’il est vide": "Aktive Ebene löschen, wenn sie leer ist",
+  "Reculer le calque actif": "Aktive Ebene nach hinten verschieben",
+  "Avancer le calque actif": "Aktive Ebene nach vorne verschieben",
+  "Ajouter la carte au calque de travail": "Karte zur Arbeitsebene hinzufügen",
+  "Retirer la carte de son calque et la replacer dans le Calque 1": "Karte aus ihrer Ebene entfernen und in Ebene 1 zurücklegen",
+  "Déplacer la carte vers un autre calque": "Karte in eine andere Ebene verschieben",
+  "Calque de travail actif": "Aktive Arbeitsebene",
+  "Travailler dans ce calque": "In dieser Ebene arbeiten",
+  "Afficher ce calque dans l’éditeur": "Diese Ebene im Editor anzeigen",
+  "Masquer ce calque dans l’éditeur": "Diese Ebene im Editor ausblenden",
+  "Déverrouiller ce calque": "Diese Ebene entsperren",
+  "Verrouiller ce calque": "Diese Ebene sperren",
+  "Nom du calque": "Ebenenname",
+  "Définir comme calque de travail": "Als Arbeitsebene festlegen",
+  "Renommer le calque": "Ebene umbenennen",
+  "verrouillé": "gesperrt",
+  "Déplacer les cartes vers un calque": "Karten in eine Ebene verschieben",
+  "Déplacer la carte vers un calque": "Karte in eine Ebene verschieben",
+  "Sélection": "Auswahl",
+  "Calque de la sélection": "Ebene der Auswahl",
+  "Édition": "Bearbeitung",
+  "Position et alignement": "Position und Ausrichtung",
+  "Dimensions": "Abmessungen",
+  "Ordre d’affichage": "Anzeigereihenfolge",
+  "Répartition": "Verteilung",
+  "Gestion de la sélection": "Auswahl verwalten",
+  "{count} cartes sélectionnées": "{count} Karten ausgewählt",
+  "Supprimer {count} cartes sélectionnées": "{count} ausgewählte Karten löschen",
+  "Supprimer {count} cartes sélectionnées ?": "{count} ausgewählte Karten löschen?",
+  "Suppression de {count} cartes…": "{count} Karten werden gelöscht…",
+  "{count} cartes supprimées": "{count} Karten gelöscht",
+  "Ajouter les cartes sélectionnées au calque de travail": "Ausgewählte Karten zur Arbeitsebene hinzufügen",
+  "Retirer les cartes sélectionnées de leur calque et les replacer dans le Calque 1": "Ausgewählte Karten aus ihrer Ebene entfernen und in Ebene 1 zurücklegen",
+  "Déplacer les cartes sélectionnées vers un autre calque": "Ausgewählte Karten in eine andere Ebene verschieben",
+  "Carte ajoutée au calque « {layer} »": "Karte zur Ebene „{layer}“ hinzugefügt",
+  "Cartes sélectionnées ajoutées au calque « {layer} »": "Ausgewählte Karten zur Ebene „{layer}“ hinzugefügt",
+  "Carte replacée dans « {layer} »": "Karte in „{layer}“ zurückgelegt",
+  "Cartes sélectionnées replacées dans « {layer} »": "Ausgewählte Karten in „{layer}“ zurückgelegt",
+  "Carte déplacée vers « {layer} »": "Karte nach „{layer}“ verschoben",
+  "Cartes sélectionnées déplacées vers « {layer} »": "Ausgewählte Karten nach „{layer}“ verschoben",
+  "Outils de l’éditeur Lotus Visual": "Werkzeuge des Lotus-Visual-Editors",
+  "Calques et outils de sélection": "Ebenen und Auswahlwerkzeuge",
+  "Redimensionner la barre latérale": "Seitenleiste skalieren",
+  "Interaction": "Interaktion",
+  "En mode blocage, lorsqu’un slider est visible dans une vue Lotus Visual, toutes les cartes et commandes situées derrière deviennent inaccessibles. Le slider reste le seul élément interactif jusqu’à sa disparition.": "Wenn der Sperrmodus aktiviert ist und ein Slider in einer Lotus-Visual-Ansicht sichtbar ist, sind alle dahinterliegenden Karten und Bedienelemente nicht zugänglich. Der Slider bleibt bis zu seinem Ausblenden das einzige interaktive Element.",
+  "Bloquer tous les autres clics pendant l’affichage du slider": "Alle anderen Klicks blockieren, solange der Slider angezeigt wird",
   "Déplacer la carte vers un onglet": "Karte in einen Tab verschieben",
   "Onglet actuel": "Aktueller Tab",
   "Configurer les onglets de la vue": "Tabs der Ansicht konfigurieren",
@@ -893,6 +1051,16 @@ const EXACT_DE = {
   "Action au double clic": "Doppeltippen-Aktion",
   "Déclarer cette cellule comme cellule principale": "Diese Zelle als Hauptzelle festlegen",
   "Glissez une cellule sur une autre pour permuter leur contenu.": "Ziehen Sie eine Zelle auf eine andere, um deren Inhalte zu tauschen.",
+  "Permuter la cellule {source} avec la cellule {target}": "Zelle {source} mit Zelle {target} tauschen",
+  "Déplacer la cellule {source} au-dessus de la cellule cible": "Zelle {source} über die Zielzelle verschieben",
+  "Cellules {source} et {target} permutées.": "Zellen {source} und {target} getauscht.",
+  "Cellules fusionnées · contenu conservé : cellule {cell}.": "Zellen zusammengeführt · Inhalt beibehalten: Zelle {cell}.",
+  "Séparation verticale sélectionnée · {value} %.": "Vertikale Trennlinie ausgewählt · {value}%.",
+  "Séparation horizontale sélectionnée · {value} %.": "Horizontale Trennlinie ausgewählt · {value}%.",
+  "Séparation réglée précisément à {value} %.": "Trennlinie exakt auf {value}% gesetzt.",
+  "Carré magnétique · {targets}": "Quadratisches Einrasten · {targets}",
+  "Carré magnétique · {targets} · {value} %": "Quadratisches Einrasten · {targets} · {value}%",
+  "Alignement magnétique · {value} %": "Ausrichtung eingerastet · {value}%",
   "Sélectionnez au moins deux cellules.": "Wählen Sie mindestens zwei Zellen aus.",
   "La sélection doit former un rectangle continu.": "Die Auswahl muss ein zusammenhängendes Rechteck bilden.",
   "Sélection incomplète.": "Unvollständige Auswahl.",
@@ -903,8 +1071,8 @@ const EXACT_DE = {
   "Modifier uniquement la largeur": "Nur Breite ändern",
   "Modifier uniquement la hauteur": "Nur Höhe ändern",
   "Modifier largeur et hauteur": "Breite und Höhe ändern",
-  "Annuler": "Rückgängig",
-  "Rétablir": "Wiederholen",
+  "Annuler la dernière modification": "Letzte Änderung rückgängig machen",
+  "Rétablir la modification": "Änderung wiederholen",
   "Sélectionner le contour": "Rahmen auswählen",
   "Diviser verticalement": "Vertikal teilen",
   "Diviser horizontalement": "Horizontal teilen",
@@ -938,6 +1106,11 @@ const EXACT_DE = {
   "Icône d’arrivée": "Endsymbol",
   "Icône droite / arrivée": "Rechtes / Endsymbol",
   "Icône du bouton": "Griffsymbol",
+  "Afficher un fond derrière l’icône": "Hintergrund hinter dem Symbol anzeigen",
+  "Couleur du fond de l’icône": "Hintergrundfarbe des Symbols",
+  "Opacité du fond (%)": "Hintergrunddeckkraft (%)",
+  "Taille du fond (%)": "Hintergrundgröße (%)",
+  "Arrondi du fond (%)": "Hintergrundrundung (%)",
   "Texte": "Text",
   "Texte au repos": "Text im Ruhezustand",
   "Texte lorsque le seuil est atteint": "Text beim Erreichen des Schwellenwerts",
@@ -1068,6 +1241,7 @@ const EXACT_DE = {
   " Les largeurs peuvent être harmonisées.": " Die Breiten können angeglichen werden.",
   "Couleur au départ": "Startfarbe",
   "Couleur à l’arrivée": "Endfarbe",
+  "Glisser pour valider": "Zum Bestätigen schieben",
   "Relâcher pour valider": "Loslassen zum Bestätigen",
   "Taille de l’icône (%)": "Symbolgröße (%)",
   "Couleur liée à la position du curseur": "Farbe abhängig von der Schiebereglerposition",
@@ -1084,6 +1258,7 @@ const EXACT_DE = {
   "Texte / caractère": "Text / Zeichen",
   "Code indisponible.": "Code nicht verfügbar.",
   "Icône Home Assistant": "Home-Assistant-Symbol",
+  "Effacer le dernier chiffre": "Letzte Ziffer löschen",
   "Effacer le code saisi": "Eingegebenen Code löschen",
   "PIN (1 à 12 chiffres)": "PIN (1 bis 12 Ziffern)",
   "Validation côté serveur.": "Serverseitige Validierung.",
@@ -1141,6 +1316,17 @@ const EXACT_DE = {
 
   "Glisser pour redimensionner · cliquer pour saisir une dimension exacte": "Ziehen zum Ändern der Größe · klicken, um eine genaue Größe einzugeben",
   "Interactions": "Interaktionen",
+
+  "Apparence": "Darstellung",
+  "Fond, séparations et apparence générale de la carte.": "Hintergrund, Trennlinien und allgemeines Erscheinungsbild der Karte.",
+  "Cellule": "Zelle",
+  "cellule": "Zelle",
+  "cellules": "Zellen",
+  "Les propriétés modifient directement la cellule sélectionnée dans la carte.": "Die Eigenschaften ändern direkt die ausgewählte Zelle der Karte.",
+  "Valeurs relatives et responsives. Elles définissent le ratio de conception et pourront servir de référence dans Lotus Visual.": "Relative, responsive Werte. Sie bestimmen das Entwurfsverhältnis und können in Lotus Visual als Referenz dienen.",
+  "Séparation": "Trennlinie",
+  "verticale": "vertikal",
+  "horizontale": "horizontal",
 
 
 };
@@ -1302,6 +1488,19 @@ function normalizeLanguage(value) {
   return SUPPORTED.has(raw) ? raw : "en";
 }
 
+export function lotusDebug(...args) {
+  let enabled = globalThis.LotusVisualDebug === true;
+  if (!enabled) {
+    try {
+      enabled = globalThis.localStorage?.getItem?.("lotus_visual.debug") === "1";
+    } catch (_error) {
+      // Storage can be disabled by the browser; diagnostics must remain optional.
+    }
+  }
+  if (!enabled) return;
+  globalThis.console?.debug?.("[Lotus Visual]", ...args);
+}
+
 function detectHassLanguage(hass = currentHass) {
   const raw = hass?.locale?.language ?? hass?.language ??
     (typeof document !== "undefined" ? document.documentElement?.lang : "") ??
@@ -1318,7 +1517,7 @@ function emitLanguageChanged(previous) {
   if (previous === next) return;
   const detail = { language: next, preference, automaticLanguage: detectHassLanguage() };
   for (const listener of [...listeners]) {
-    try { listener(detail); } catch (error) { console.warn("[Lotus Visual] i18n listener failed", error); }
+    try { listener(detail); } catch (error) { lotusDebug("i18n listener failed", error); }
   }
   globalThis.dispatchEvent?.(new CustomEvent("lotus-language-changed", { detail }));
 }
@@ -1368,7 +1567,7 @@ async function loadPreference(hass) {
       queueMicrotask(() => window.location.reload());
     }
   } catch (error) {
-    console.warn("[Lotus Visual] Unable to load language preference; using local fallback.", error);
+    lotusDebug("Unable to load language preference; using local fallback.", error);
   }
 }
 
@@ -1527,6 +1726,7 @@ globalThis.LotusVisualI18n = Object.assign(globalThis.LotusVisualI18n || {}, {
   setPreference: lotusSetLanguagePreference,
   getTextDirection: lotusGetTextDirection,
   isRtl: lotusIsRtl,
+  debug: lotusDebug,
   subscribe: lotusSubscribeLanguage,
   languages: LOTUS_LANGUAGES,
 });

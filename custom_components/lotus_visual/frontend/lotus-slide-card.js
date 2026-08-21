@@ -1,16 +1,18 @@
 /*
- * Lotus Slide 1.1.0
+ * Lotus Slide 1.2.0
  * Slide-to-confirm Lovelace card for Lotus Visual.
  *
  * The card uses Home Assistant native ui_action configuration for the action
  * executed once the handle reaches the validation threshold and is released.
  */
 
-import { deepClone, clamp } from "./lotus-core.js?v=0.9.6";
-import { lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.9.6";
+import { deepClone, clamp } from "./lotus-core.js?v=0.10.9";
+import { lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.10.9";
 
-const LOTUS_SLIDE_VERSION = "1.1.0";
+const LOTUS_SLIDE_VERSION = "1.2.0";
 const LOTUS_SLIDE_TYPE = "custom:lotus-slide-card";
+const DEFAULT_SLIDE_LABEL = "Glisser pour valider";
+const DEFAULT_SLIDE_SUCCESS_LABEL = "Relâcher pour valider";
 const HA_THEME_COLORS = new Set([
   "primary", "accent", "red", "pink", "purple", "deep-purple", "indigo",
   "blue", "light-blue", "cyan", "teal", "green", "light-green", "lime",
@@ -141,6 +143,17 @@ const defaultIcon = (icon = "", size = 42, start = "secondary-text", end = "prim
   color_end: end,
 });
 
+const defaultSideIcon = (icon = "", size = 42, start = "secondary-text", end = "primary", dynamic = true) => ({
+  ...defaultIcon(icon, size, start, end, dynamic),
+  background: {
+    enabled: false,
+    color: "black",
+    opacity: 65,
+    size: 82,
+    radius: 50,
+  },
+});
+
 const baseConfig = () => ({
   type: LOTUS_SLIDE_TYPE,
   orientation: "horizontal",
@@ -148,6 +161,7 @@ const baseConfig = () => ({
   entity: "",
   threshold: 90,
   reset_delay: 650,
+  interaction: { modal_blocker: false },
   design: { width: 100, height: 18 },
   track: {
     thickness: 72,
@@ -166,13 +180,13 @@ const baseConfig = () => ({
     radius: 50,
   },
   icons: {
-    start: defaultIcon("mdi:lock-outline", 42, "secondary-text", "primary", true),
-    end: defaultIcon("mdi:lock-open-variant-outline", 42, "secondary-text", "green", true),
+    start: defaultSideIcon("mdi:lock-outline", 42, "secondary-text", "primary", true),
+    end: defaultSideIcon("mdi:lock-open-variant-outline", 42, "secondary-text", "green", true),
     thumb: defaultIcon("mdi:chevron-double-right", 46, "white", "white", false),
   },
   text: {
-    label: "Glisser pour valider",
-    success_label: "Relâcher pour valider",
+    label: DEFAULT_SLIDE_LABEL,
+    success_label: DEFAULT_SLIDE_SUCCESS_LABEL,
     color: "primary-text",
     success_color: "primary",
     font_size: 14,
@@ -180,19 +194,41 @@ const baseConfig = () => ({
   action: { action: "none" },
 });
 
-const normalizeIcon = (source, fallback) => ({
-  icon: String(source?.icon ?? fallback.icon ?? ""),
-  size: num(source?.size, fallback.size, 12, 100),
-  dynamic: source?.dynamic !== false,
-  color_start: String(source?.color_start ?? fallback.color_start),
-  color_end: String(source?.color_end ?? fallback.color_end),
-});
+const localizedSlideLabel = (value, fallback) => {
+  const text = String(value || fallback);
+  return text === fallback ? lotusT(fallback) : text;
+};
+
+const normalizeIcon = (source, fallback) => {
+  const normalized = {
+    icon: String(source?.icon ?? fallback.icon ?? ""),
+    size: num(source?.size, fallback.size, 12, 100),
+    dynamic: source?.dynamic !== false,
+    color_start: String(source?.color_start ?? fallback.color_start),
+    color_end: String(source?.color_end ?? fallback.color_end),
+  };
+  const hasBackgroundConfig = (fallback?.background && typeof fallback.background === "object")
+    || (source?.background && typeof source.background === "object");
+  if (hasBackgroundConfig) {
+    const sourceBackground = source?.background && typeof source.background === "object" ? source.background : {};
+    const fallbackBackground = fallback?.background && typeof fallback.background === "object" ? fallback.background : {};
+    normalized.background = {
+      enabled: sourceBackground.enabled === true,
+      color: String(sourceBackground.color ?? fallbackBackground.color ?? "black"),
+      opacity: num(sourceBackground.opacity, fallbackBackground.opacity ?? 65, 0, 100),
+      size: num(sourceBackground.size, fallbackBackground.size ?? 82, 20, 100),
+      radius: num(sourceBackground.radius, fallbackBackground.radius ?? 50, 0, 50),
+    };
+  }
+  return normalized;
+};
 
 const normalize = (raw) => {
   const defaults = baseConfig();
   const orientation = raw?.orientation === "vertical" ? "vertical" : "horizontal";
   const defaultDesign = orientation === "vertical" ? { width: 18, height: 100 } : { width: 100, height: 18 };
   const sourceDesign = raw?.design && typeof raw.design === "object" ? raw.design : {};
+  const sourceInteraction = raw?.interaction && typeof raw.interaction === "object" ? raw.interaction : {};
   const sourceTrack = raw?.track && typeof raw.track === "object" ? raw.track : {};
   const sourceThumb = raw?.thumb && typeof raw.thumb === "object" ? raw.thumb : {};
   const sourceIcons = raw?.icons && typeof raw.icons === "object" ? raw.icons : {};
@@ -219,6 +255,9 @@ const normalize = (raw) => {
     entity: String(raw?.entity ?? ""),
     threshold: num(raw?.threshold, 90, 55, 100),
     reset_delay: num(raw?.reset_delay, 650, 0, 5000),
+    interaction: {
+      modal_blocker: sourceInteraction.modal_blocker === true,
+    },
     design: {
       width: designWidth,
       height: designHeight,
@@ -469,6 +508,12 @@ class LotusSlideCard extends HTMLElement {
       zone.classList.add("empty");
       return zone;
     }
+    if (conf.background?.enabled) {
+      zone.classList.add("has-background");
+      zone.style.setProperty("--slide-icon-background-color", colorCss(conf.background.color, "rgba(0,0,0,.65)"));
+      zone.style.setProperty("--slide-icon-background-opacity", String(clamp((Number(conf.background.opacity) || 0) / 100, 0, 1)));
+      zone.style.setProperty("--slide-icon-background-radius", `${num(conf.background.radius, 50, 0, 50)}%`);
+    }
     const icon = document.createElement("ha-icon");
     icon.setAttribute("icon", conf.icon);
     icon.className = "slide-side-icon";
@@ -498,7 +543,7 @@ class LotusSlideCard extends HTMLElement {
     thumb.setAttribute("tabindex", "0");
     thumb.setAttribute("aria-valuemin", "0");
     thumb.setAttribute("aria-valuemax", "100");
-    thumb.setAttribute("aria-label", c.text.label || "Glisser pour valider");
+    thumb.setAttribute("aria-label", localizedSlideLabel(c.text.label, DEFAULT_SLIDE_LABEL));
 
     if (c.icons.thumb.icon) {
       const thumbIcon = document.createElement("ha-icon");
@@ -546,10 +591,16 @@ class LotusSlideCard extends HTMLElement {
       .slide-shell { width:100%; height:100%; min-height:0; display:flex; align-items:center; justify-content:center; box-sizing:border-box; }
       .slide-shell.horizontal { flex-direction:row; }
       .slide-shell.vertical { flex-direction:column; }
-      .slide-icon-zone { flex:0 0 auto; display:grid; place-items:center; box-sizing:border-box; pointer-events:none; }
+      .slide-icon-zone { flex:0 0 auto; display:grid; place-items:center; box-sizing:border-box; pointer-events:none; position:relative; }
       .horizontal .slide-icon-zone { width:14%; height:100%; }
       .vertical .slide-icon-zone { width:100%; height:14%; }
       .slide-icon-zone.empty { width:0; height:0; }
+      .slide-icon-zone.has-background::before {
+        content:""; grid-area:1 / 1; width:var(--slide-icon-background-size, 0px); height:var(--slide-icon-background-size, 0px);
+        box-sizing:border-box; background:var(--slide-icon-background-color, rgba(0,0,0,.65));
+        opacity:var(--slide-icon-background-opacity, .65); border-radius:var(--slide-icon-background-radius, 50%);
+        pointer-events:none; z-index:0;
+      }
       .slide-track {
         position:relative; flex:1 1 auto; min-width:0; min-height:0; box-sizing:border-box;
         background:${colorCss(c.track.background_color, "var(--secondary-background-color, #e5e7eb)")};
@@ -604,6 +655,7 @@ class LotusSlideCard extends HTMLElement {
       :host([busy]) .slide-thumb { opacity:.72; cursor:wait; }
 
       .slide-side-icon, .slide-thumb-icon { display:block; }
+      .slide-side-icon { grid-area:1 / 1; position:relative; z-index:1; }
       .horizontal .slide-side-icon { --mdc-icon-size:min(${c.icons.start.size}cqh, ${c.icons.start.size}cqw); }
       .vertical .slide-side-icon { --mdc-icon-size:min(${c.icons.start.size}cqh, ${c.icons.start.size}cqw); }
     `;
@@ -614,9 +666,12 @@ class LotusSlideCard extends HTMLElement {
 
   _applyIconStyle(kind, progress) {
     const conf = this._config.icons[kind];
+    const zone = kind === "thumb"
+      ? null
+      : this.shadowRoot?.querySelector(`.slide-icon-zone[data-icon-kind="${kind}"]`);
     const target = kind === "thumb"
       ? this.shadowRoot?.querySelector(".slide-thumb-icon")
-      : this.shadowRoot?.querySelector(`.slide-icon-zone[data-icon-kind="${kind}"] .slide-side-icon`);
+      : zone?.querySelector(".slide-side-icon");
     if (!target) return;
     const start = colorCss(conf.color_start, "var(--secondary-text-color,#727272)");
     const end = colorCss(conf.color_end, start);
@@ -624,13 +679,17 @@ class LotusSlideCard extends HTMLElement {
       ? `color-mix(in srgb, ${start} ${(1 - progress) * 100}%, ${end} ${progress * 100}%)`
       : start;
     const sizeBase = conf.size;
-    const parentRect = target.parentElement?.getBoundingClientRect?.();
+    const parentRect = (zone || target.parentElement)?.getBoundingClientRect?.();
     const parentShortSide = Math.max(0, Math.min(Number(parentRect?.width) || 0, Number(parentRect?.height) || 0));
     if (parentShortSide > 0) {
       const px = Math.max(1, parentShortSide * (sizeBase / 100));
       target.style.setProperty("--mdc-icon-size", `${px}px`);
       target.style.width = `${px}px`;
       target.style.height = `${px}px`;
+      if (zone && conf.background?.enabled) {
+        const backgroundPx = Math.max(1, parentShortSide * (num(conf.background.size, 82, 20, 100) / 100));
+        zone.style.setProperty("--slide-icon-background-size", `${backgroundPx}px`);
+      }
     }
   }
 
@@ -754,10 +813,12 @@ class LotusSlideCard extends HTMLElement {
     }
 
     const ready = p * 100 >= this._config.threshold;
-    label.textContent = ready ? this._config.text.success_label : this._config.text.label;
+    const restingLabel = localizedSlideLabel(this._config.text.label, DEFAULT_SLIDE_LABEL);
+    const successLabel = localizedSlideLabel(this._config.text.success_label, DEFAULT_SLIDE_SUCCESS_LABEL);
+    label.textContent = ready ? successLabel : restingLabel;
     label.style.color = colorCss(ready ? this._config.text.success_color : this._config.text.color, "var(--primary-text-color,#212121)");
     thumb.setAttribute("aria-valuenow", String(Math.round(p * 100)));
-    thumb.setAttribute("aria-valuetext", ready ? this._config.text.success_label : `${Math.round(p * 100)} %`);
+    thumb.setAttribute("aria-valuetext", ready ? successLabel : `${Math.round(p * 100)} %`);
 
     this._fitLabel(label);
     this._applyIconStyle("start", p);
@@ -1039,6 +1100,15 @@ class LotusSlideCardEditor extends HTMLElement {
     group.appendChild(h4);
     this._icon(group, `icons.${kind}.icon`, "Icône", conf.icon, (value) => this._commit((c) => { c.icons[kind].icon = value; }));
     this._number(group, `icons.${kind}.size`, "Taille de l’icône (%)", conf.size, 12, 100, 1, (value) => this._commit((c) => { c.icons[kind].size = Number(value); }));
+    if (kind !== "thumb") {
+      this._boolean(group, `icons.${kind}.background.enabled`, "Afficher un fond derrière l’icône", conf.background.enabled, (value) => this._commit((c) => { c.icons[kind].background.enabled = value; }));
+      if (conf.background.enabled) {
+        this._color(group, `icons.${kind}.background.color`, "Couleur du fond de l’icône", conf.background.color, (value) => this._commit((c) => { c.icons[kind].background.color = value; }));
+        this._number(group, `icons.${kind}.background.opacity`, "Opacité du fond (%)", conf.background.opacity, 0, 100, 1, (value) => this._commit((c) => { c.icons[kind].background.opacity = Number(value); }));
+        this._number(group, `icons.${kind}.background.size`, "Taille du fond (%)", conf.background.size, 20, 100, 1, (value) => this._commit((c) => { c.icons[kind].background.size = Number(value); }));
+        this._number(group, `icons.${kind}.background.radius`, "Arrondi du fond (%)", conf.background.radius, 0, 50, 1, (value) => this._commit((c) => { c.icons[kind].background.radius = Number(value); }));
+      }
+    }
     this._boolean(group, `icons.${kind}.dynamic`, "Couleur liée à la position du curseur", conf.dynamic, (value) => this._commit((c) => { c.icons[kind].dynamic = value; }));
     this._color(group, `icons.${kind}.color_start`, "Couleur au départ", conf.color_start, (value) => this._commit((c) => { c.icons[kind].color_start = value; }));
     if (conf.dynamic) {
@@ -1086,6 +1156,19 @@ class LotusSlideCardEditor extends HTMLElement {
     this._number(general, "reset_delay", "Délai avant retour au départ (ms)", this._config.reset_delay, 0, 5000, 50, (value) => this._commit((c) => { c.reset_delay = Number(value); }), "box");
     this._entity(general);
     pane.appendChild(general);
+
+    const interaction = this._section(
+      "Interaction",
+      "En mode blocage, lorsqu’un slider est visible dans une vue Lotus Visual, toutes les cartes et commandes situées derrière deviennent inaccessibles. Le slider reste le seul élément interactif jusqu’à sa disparition."
+    );
+    this._boolean(
+      interaction,
+      "interaction.modal_blocker",
+      "Bloquer tous les autres clics pendant l’affichage du slider",
+      this._config.interaction.modal_blocker,
+      (value) => this._commit((c) => { c.interaction.modal_blocker = value; }),
+    );
+    pane.appendChild(interaction);
 
     const format = this._section("Format responsive", "Le rapport largeur/hauteur sert de référence à Lotus Visual pour conserver les proportions de la carte.");
     this._number(format, "design.width", "Largeur de référence", this._config.design.width, 5, 200, 1, (value) => this._commit((c) => { c.design.width = Number(value); }), "box");
@@ -1220,9 +1303,3 @@ window.LotusSlide = Object.assign(window.LotusSlide || {}, {
   type: LOTUS_SLIDE_TYPE,
   getStubConfig: () => clone(baseConfig()),
 });
-
-console.info(
-  `%c LOTUS SLIDE %c v${LOTUS_SLIDE_VERSION} `,
-  "color:white;background:#1565c0;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px;",
-  "color:#1565c0;background:#e3f2fd;font-weight:700;padding:2px 6px;border-radius:0 4px 4px 0;",
-);

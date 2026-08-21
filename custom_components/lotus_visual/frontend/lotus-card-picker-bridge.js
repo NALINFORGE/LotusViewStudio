@@ -8,8 +8,8 @@
  * and already-mounted pickers are rebuilt once.
  */
 
-import { registerLotusCards } from "./lotus-card-registry.js?v=0.9.6";
-import { lotusSetHass } from "./lotus-i18n.js?v=0.9.6";
+import { registerLotusCards } from "./lotus-card-registry.js?v=0.10.9";
+import { lotusDebug, lotusSetHass } from "./lotus-i18n.js?v=0.10.9";
 
 const PATCHED = Symbol.for("lotusVisual.cardPickerPatched.v1");
 
@@ -30,7 +30,7 @@ function refreshPicker(picker) {
       picker.requestUpdate?.();
     }
   } catch (error) {
-    console.warn("[Lotus Visual] Impossible de rafraîchir le sélecteur de cartes.", error);
+    lotusDebug("Unable to refresh the card picker", error);
   }
 }
 
@@ -90,5 +90,5 @@ async function installCardPickerBridge() {
 }
 
 installCardPickerBridge().catch((error) => {
-  console.error("[Lotus Visual] Impossible d'installer le bridge du sélecteur de cartes.", error);
+  lotusDebug("Unable to install the card-picker bridge", error);
 });

@@ -1,7 +1,7 @@
 """Constants for Lotus Visual."""
 
 DOMAIN = "lotus_visual"
-VERSION = "0.9.6"
+VERSION = "0.10.9"
 URL_BASE = "/lotus_visual_static"
 BRAND_URL = "/lotus_visual_brand"
 PANEL_PATH = "lotus-visual"

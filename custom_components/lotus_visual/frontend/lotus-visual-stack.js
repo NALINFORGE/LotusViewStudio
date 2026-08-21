@@ -1,5 +1,5 @@
-import { registerLotusStackCard } from "./lotus-card-registry.js?v=0.9.6";
-import { lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.9.6";
+import { registerLotusStackCard } from "./lotus-card-registry.js?v=0.10.9";
+import { lotusDebug, lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.10.9";
 
 
 /*
@@ -2083,7 +2083,7 @@ class VisualStackCard extends HTMLElement {
           );
         }
       }).catch((error) => {
-        console.warn("[Lotus Stack] Impossible de résoudre l'image", source, error);
+        lotusDebug("Unable to resolve Stack image", source, error);
       }).finally(() => {
         this._mediaImagePending.delete(source);
         if (this.isConnected) this._render();
@@ -3176,8 +3176,8 @@ class VisualStackCardEditor extends HTMLElement {
     const feedback = this.shadowRoot?.querySelector(".canvas-feedback");
     if (feedback && active) {
       feedback.textContent = Number(targetId) > 0 && Number(targetId) !== Number(sourceId)
-        ? `Permuter Cellule ${sourceId} avec Cellule ${targetId}`
-        : `Déplacez Cellule ${sourceId} au-dessus de la cellule cible`;
+        ? lotusT("Permuter la cellule {source} avec la cellule {target}", { source:sourceId, target:targetId })
+        : lotusT("Déplacer la cellule {source} au-dessus de la cellule cible", { source:sourceId });
     }
   }
 
@@ -3224,7 +3224,7 @@ class VisualStackCardEditor extends HTMLElement {
     this._selectedItemId = targetId;
     this._selectedRegionIds = new Set([targetId]);
     this._frameSelected = false;
-    this._message = `Cellules ${sourceId} et ${targetId} permutées.`;
+    this._message = lotusT("Cellules {source} et {target} permutées.", { source:sourceId, target:targetId });
     this._render();
   }
 
@@ -3349,7 +3349,7 @@ class VisualStackCardEditor extends HTMLElement {
     const rect = state.rect;
     this._selectedItemId = keepId;
     this._selectedRegionIds = new Set([keepId]);
-    this._message = `Cellules fusionnées · contenu conservé : cellule ${keepId}.`;
+    this._message = lotusT("Cellules fusionnées · contenu conservé : cellule {cell}.", { cell:keepId });
     this._commit((config) => {
       // Fusion is deliberately destructive for every selected cell except the first one
       // selected by the user. This keeps the workflow predictable: no blocking dialog and
@@ -3829,9 +3829,9 @@ class VisualStackCardEditor extends HTMLElement {
         : null;
       if (snapped) {
         const labels = [];
-        if (snapped.frame) labels.push("carte");
-        if (snapped.regionIds?.length) labels.push(...snapped.regionIds.map((id) => `cellule ${id}`));
-        this._message = `Carré magnétique · ${labels.join(" + ")}`;
+        if (snapped.frame) labels.push(lotusT("carte"));
+        if (snapped.regionIds?.length) labels.push(...snapped.regionIds.map((id) => `${lotusT("cellule")} ${id}`));
+        this._message = lotusT("Carré magnétique · {targets}", { targets:labels.join(" + ") });
       } else {
         this._message = previousMessage;
       }
@@ -3970,8 +3970,10 @@ class VisualStackCardEditor extends HTMLElement {
     this._selectedDividerKey = this._dividerKey(divider);
     this._dimensionOverlay = null;
     this._snapGuide = null;
-    const orientation = divider.orientation === "vertical" ? "verticale" : "horizontale";
-    this._message = `Séparation ${orientation} sélectionnée · ${vscRound(divider.position, 1)} %.`;
+    const message = divider.orientation === "vertical"
+      ? "Séparation verticale sélectionnée · {value} %."
+      : "Séparation horizontale sélectionnée · {value} %.";
+    this._message = lotusT(message, { value:vscRound(divider.position, 1) });
     this._render();
   }
 
@@ -4081,7 +4083,7 @@ class VisualStackCardEditor extends HTMLElement {
     );
     this._selectedDividerKey = updated ? this._dividerKey(updated) : "";
     if (updated) {
-      this._message = `Séparation réglée précisément à ${vscRound(updated.position, 1)} %.`;
+      this._message = lotusT("Séparation réglée précisément à {value} %.", { value:vscRound(updated.position, 1) });
     }
     this._emit();
     this._render();
@@ -4116,8 +4118,9 @@ class VisualStackCardEditor extends HTMLElement {
       input.max = "100";
       input.step = "0.1";
       input.value = String(vscRound(value, 1));
-      input.setAttribute("aria-label", `${sideLabel} de la cellule ${entry.id} en pourcentage`);
-      input.title = `${sideLabel} de la cellule ${entry.id} — saisir la dimension en pourcentage`;
+      const accessibleLabel = `${lotusT(sideLabel)} · ${lotusT("Cellule")} ${entry.id} · %`;
+      input.setAttribute("aria-label", accessibleLabel);
+      input.title = accessibleLabel;
       const suffix = document.createElement("strong");
       suffix.textContent = "%";
       const stop = (event) => event.stopPropagation();
@@ -4218,10 +4221,13 @@ class VisualStackCardEditor extends HTMLElement {
       if (!snapped) {
         this._message = previousMessage;
       } else if (snapped.kind === "square") {
-        const cells = (snapped.regionIds || []).map((id) => `Cellule ${id}`).join(" + ");
-        this._message = `Carré magnétique · ${cells || "cellule"} · ${vscRound(snapped.position, 1)} %`;
+        const cells = (snapped.regionIds || []).map((id) => `${lotusT("Cellule")} ${id}`).join(" + ");
+        this._message = lotusT("Carré magnétique · {targets} · {value} %", {
+          targets:cells || lotusT("cellule"),
+          value:vscRound(snapped.position, 1),
+        });
       } else {
-        this._message = `Alignement magnétique · ${vscRound(snapped.position, 1)} %`;
+        this._message = lotusT("Alignement magnétique · {value} %", { value:vscRound(snapped.position, 1) });
       }
       this._config = buildDraft(draftDelta);
       this._dimensionOverlay = {
@@ -6263,8 +6269,8 @@ class VisualStackCardEditor extends HTMLElement {
     const left = document.createElement("div");
     left.className = "toolbar-group";
     left.append(
-      this._iconButton("mdi:undo", () => this._undo(), { disabled:!this._history.length, title:"Annuler" }),
-      this._iconButton("mdi:redo", () => this._redo(), { disabled:!this._future.length, title:"Rétablir" }),
+      this._iconButton("mdi:undo", () => this._undo(), { disabled:!this._history.length, title:"Annuler la dernière modification" }),
+      this._iconButton("mdi:redo", () => this._redo(), { disabled:!this._future.length, title:"Rétablir la modification" }),
       this._iconButton("mdi:crop-free", () => this._selectFrame(), { kind:this._frameSelected ? "active" : "secondary", title:"Sélectionner le contour" }),
       this._iconButton("mdi:select-multiple", () => { this._multiSelect = !this._multiSelect; this._render(); }, { kind:this._multiSelect ? "active" : "secondary", title:"Sélection multiple" }),
     );
@@ -6357,11 +6363,11 @@ class VisualStackCardEditor extends HTMLElement {
       const live = document.createElement("div");
       live.className = `frame-live-dimension frame-live-${state.edge}`;
       if (state.orientation === "vertical") {
-        live.textContent = `Largeur ${formatPercent(state.widthScale)}`;
+        live.textContent = `${lotusT("Largeur")} ${formatPercent(state.widthScale)}`;
       } else if (state.orientation === "horizontal") {
-        live.textContent = `Hauteur ${formatPercent(state.heightScale)}`;
+        live.textContent = `${lotusT("Hauteur")} ${formatPercent(state.heightScale)}`;
       } else {
-        live.textContent = `L ${formatPercent(state.widthScale)} · H ${formatPercent(state.heightScale)}`;
+        live.textContent = `${lotusT("L")} ${formatPercent(state.widthScale)} · ${lotusT("H")} ${formatPercent(state.heightScale)}`;
       }
       frame.appendChild(live);
     }
@@ -6492,7 +6498,7 @@ class VisualStackCardEditor extends HTMLElement {
 
     const metrics = document.createElement("div");
     metrics.className = "frame-metrics";
-    metrics.textContent = `L ${this._config.frame_width} · H ${this._config.frame_height} · ${vscRound(this._config.frame_width/this._config.frame_height,2)}:1`;
+    metrics.textContent = `${lotusT("L")} ${this._config.frame_width} · ${lotusT("H")} ${this._config.frame_height} · ${vscRound(this._config.frame_width/this._config.frame_height,2)}:1`;
 
     stage.append(frame, metrics);
     parent.appendChild(stage);
@@ -6997,7 +7003,7 @@ class LotusDynamicImageElement extends HTMLElement {
           typeof this._hass?.hassUrl === "function" ? this._hass.hassUrl(url) : url,
         );
       }).catch((error) => {
-        console.warn("[Lotus Stack] Impossible de résoudre l'image dynamique", value, error);
+        lotusDebug("Unable to resolve dynamic Stack image", value, error);
       }).finally(() => {
         this._pendingMedia.delete(value);
         if (this.isConnected) this._renderImage();
@@ -7647,15 +7653,9 @@ const installLotusStackNativeEditorBridge = () => {
       return originalGetConfigElement.apply(this, args);
     };
   }).catch((error) => {
-    console.warn("[Lotus Stack] Impossible d'activer l'éditeur natif Home Assistant", error);
+    lotusDebug("Unable to activate the native Home Assistant editor", error);
   });
 };
 
 installLotusStackNativeEditorBridge();
 registerLotusStackCard();
-
-console.info(
-  `%c LOTUS STACK %c v${VISUAL_STACK_CARD_VERSION} `,
-  "color:white;background:#03a9f4;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px;",
-  "color:#03a9f4;background:#e9f7fe;font-weight:700;padding:2px 6px;border-radius:0 4px 4px 0;",
-);

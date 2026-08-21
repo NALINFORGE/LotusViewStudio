@@ -1,5 +1,5 @@
 /*
- * Lotus Visual direct-create bridge — v0.9.6
+ * Lotus Visual direct-create bridge — v0.10.9
  *
  * Goal
  * ----
@@ -34,6 +34,7 @@ const DIRECT_PREFIX = "__lotus_direct__:";
 const PATCHED = Symbol.for("lotusVisual.directCreateBridge.v2");
 const CAPTURE_INSTALLED = Symbol.for("lotusVisual.directCreateCapture.v2");
 const IMPORT_WRAPPED = Symbol.for("lotusVisual.directCreateImportWrapped.v2");
+const lotusDebug = (...args) => globalThis.LotusVisualI18n?.debug?.(...args);
 
 const DIRECT_CARD_TAGS = Object.freeze({
   "lotus-visual-stack": "lotus-visual-stack",
@@ -91,9 +92,7 @@ function patchNativeCreateDialog() {
 
     const stub = getStubConfig(cardType);
     if (!stub) {
-      console.error(
-        `[Lotus Visual] Création directe impossible : getStubConfig() indisponible pour ${cardType}.`,
-      );
+      lotusDebug(`Direct creation unavailable: getStubConfig() is missing for ${cardType}.`);
       return originalShowDialog.call(this, cleanNativeParams(params));
     }
 
@@ -102,9 +101,7 @@ function patchNativeCreateDialog() {
     const result = originalShowDialog.call(this, cleanNativeParams(params));
 
     if (typeof this._handleCardPicked !== "function") {
-      console.error(
-        "[Lotus Visual] Création directe impossible : Home Assistant ne fournit plus _handleCardPicked().",
-      );
+      lotusDebug("Direct creation unavailable: Home Assistant no longer exposes _handleCardPicked().");
       return result;
     }
 
@@ -114,10 +111,7 @@ function patchNativeCreateDialog() {
       // Enregistrer / Annuler and for the final Lovelace save.
       this._handleCardPicked({ detail: { config: stub } });
     } catch (error) {
-      console.error(
-        `[Lotus Visual] Échec de l’ouverture directe de l’éditeur ${cardType}.`,
-        error,
-      );
+      lotusDebug(`Unable to open the ${cardType} editor directly.`, error);
     }
 
     return result;
@@ -183,9 +177,7 @@ function interceptShowDialog(event) {
   // Cold frontend: guarantee the patch is installed inside HA's own lazy
   // import, before make-dialog-manager creates the dialog element.
   if (!wrapNativeDialogImport(detail)) {
-    console.error(
-      `[Lotus Visual] Impossible d’intercepter l’import natif pour ${cardType}.`,
-    );
+    lotusDebug(`Unable to intercept the native import for ${cardType}.`);
   }
 }
 
@@ -211,7 +203,7 @@ function installCaptureBridge() {
     .catch(() => {});
 
   window.LotusVisual = Object.assign(window.LotusVisual || {}, {
-    directCreateBridge: "0.9.6",
+    directCreateBridge: "0.10.9",
     directCreateMode: "capture-import-before-dialog",
   });
 }

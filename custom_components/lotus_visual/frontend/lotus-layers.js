@@ -582,7 +582,8 @@ function B(e, t, n = {}) {
 	let r = z(e), i = Qe[r]?.[t];
 	if (i === void 0 && !["en", "fr", "de"].includes(r)) {
 		let a = Qe.fr?.[t] ?? Qe.en[t];
-		i = globalThis.LotusVisualI18n?.t?.(a, n, r);
+		let o = globalThis.LotusVisualI18n?.t?.(a, n, r);
+		i = o && o !== a ? o : Qe.en[t];
 	}
 	i ??= Qe.en[t];
 	return i.replace(/\{([a-zA-Z0-9_]+)\}/g, (e, t) => {
@@ -597,7 +598,6 @@ var Qe, H = e((() => {
 	Qe = {
 		en: {
 			"metadata.description": "Picture Elements card enhanced with a five-level folder tree.",
-			"console.loaded": "Version {version} loaded.",
 			"defaults.cardTitle": "House floor plan",
 			"defaults.unclassifiedElements": "Unclassified elements",
 			"defaults.folderNumber": "Folder {number}",
@@ -642,6 +642,19 @@ var Qe, H = e((() => {
 			"editor.customCardUnavailable": "This custom card is no longer available or is not loaded.",
 			"editor.showYamlEditor": "YAML editor",
 			"editor.showVisualEditor": "Visual editor",
+			"editor.positionAndSize": "Position and size",
+			"editor.positionX": "X position / left (%)",
+			"editor.positionY": "Y position / top (%)",
+			"editor.sizeMode": "Size mode",
+			"editor.pixels": "Pixels",
+			"editor.responsivePlan": "Responsive (% of floor plan)",
+			"editor.widthWithUnit": "Width ({unit})",
+			"editor.heightWithUnit": "Height ({unit})",
+			"editor.autoProportions": "Automatic proportions",
+			"editor.gridDimensions": "{columns} column(s) × {rows} row(s) — ratio {ratio}",
+			"editor.defaultPixelSize": "Default pixel size: {width} × {height} px",
+			"editor.visualStackSizeHelp": "Every Visual Stack Card cell remains square. Its height is calculated automatically from its row and column count. In Responsive mode, only its width is expressed as a percentage of the floor plan.",
+			"editor.responsiveSizeHelp": "X and Y remain percentages of the floor plan. In Responsive mode, width and height are calculated relative to the floor plan.",
 			"folder.open": "Open folder",
 			"folder.collapse": "Collapse folder",
 			"folder.color": "Folder identification color",
@@ -685,7 +698,6 @@ var Qe, H = e((() => {
 		},
 		fr: {
 			"metadata.description": "Carte Éléments d’image enrichie avec une arborescence de dossiers sur cinq niveaux.",
-			"console.loaded": "Version {version} chargée.",
 			"defaults.cardTitle": "Plan de la maison",
 			"defaults.unclassifiedElements": "Éléments non classés",
 			"defaults.folderNumber": "Dossier {number}",
@@ -730,6 +742,19 @@ var Qe, H = e((() => {
 			"editor.customCardUnavailable": "Cette carte personnalisée n’est plus disponible ou n’est pas chargée.",
 			"editor.showYamlEditor": "Éditeur YAML",
 			"editor.showVisualEditor": "Éditeur visuel",
+			"editor.positionAndSize": "Position et taille",
+			"editor.positionX": "Position X / gauche (%)",
+			"editor.positionY": "Position Y / haut (%)",
+			"editor.sizeMode": "Mode de taille",
+			"editor.pixels": "Pixels",
+			"editor.responsivePlan": "Responsive (% du plan)",
+			"editor.widthWithUnit": "Largeur ({unit})",
+			"editor.heightWithUnit": "Hauteur ({unit})",
+			"editor.autoProportions": "Proportions automatiques",
+			"editor.gridDimensions": "{columns} colonne(s) × {rows} ligne(s) — ratio {ratio}",
+			"editor.defaultPixelSize": "Taille pixel par défaut : {width} × {height} px",
+			"editor.visualStackSizeHelp": "Chaque case de Visual Stack Card reste carrée. La hauteur est calculée automatiquement à partir du nombre de lignes et de colonnes. En mode Responsive, seule la largeur est exprimée en % du plan.",
+			"editor.responsiveSizeHelp": "X et Y restent en pourcentage du plan. En mode Responsive, largeur et hauteur sont calculées par rapport au plan.",
 			"folder.open": "Ouvrir le dossier",
 			"folder.collapse": "Replier le dossier",
 			"folder.color": "Couleur d’identification du dossier",
@@ -773,7 +798,6 @@ var Qe, H = e((() => {
 		},
 		de: {
 			"metadata.description": "Picture-Elements-Karte mit einem Ordnerbaum über fünf Ebenen.",
-			"console.loaded": "Version {version} geladen.",
 			"defaults.cardTitle": "Hausgrundriss",
 			"defaults.unclassifiedElements": "Nicht klassifizierte Elemente",
 			"defaults.folderNumber": "Ordner {number}",
@@ -818,6 +842,19 @@ var Qe, H = e((() => {
 			"editor.customCardUnavailable": "Diese benutzerdefinierte Karte ist nicht mehr verfügbar oder wurde nicht geladen.",
 			"editor.showYamlEditor": "YAML-Editor",
 			"editor.showVisualEditor": "Visueller Editor",
+			"editor.positionAndSize": "Position und Größe",
+			"editor.positionX": "X-Position / links (%)",
+			"editor.positionY": "Y-Position / oben (%)",
+			"editor.sizeMode": "Größenmodus",
+			"editor.pixels": "Pixel",
+			"editor.responsivePlan": "Responsiv (% des Grundrisses)",
+			"editor.widthWithUnit": "Breite ({unit})",
+			"editor.heightWithUnit": "Höhe ({unit})",
+			"editor.autoProportions": "Automatische Proportionen",
+			"editor.gridDimensions": "{columns} Spalte(n) × {rows} Zeile(n) — Verhältnis {ratio}",
+			"editor.defaultPixelSize": "Standard-Pixelgröße: {width} × {height} px",
+			"editor.visualStackSizeHelp": "Jede Zelle der Visual Stack Card bleibt quadratisch. Ihre Höhe wird automatisch aus der Anzahl der Zeilen und Spalten berechnet. Im responsiven Modus wird nur die Breite als Prozentsatz des Grundrisses angegeben.",
+			"editor.responsiveSizeHelp": "X und Y bleiben Prozentsätze des Grundrisses. Im responsiven Modus werden Breite und Höhe relativ zum Grundriss berechnet.",
 			"folder.open": "Ordner öffnen",
 			"folder.collapse": "Ordner einklappen",
 			"folder.color": "Kennfarbe des Ordners",
@@ -948,7 +985,7 @@ function lotusResolveNativeVisualStack(e, hass) {
 	try {
 		return n.toNative(n.toInternal(e), hass);
 	} catch (e) {
-		console.warn("LotusLayers: impossible de convertir l’ancienne Visual Stack pour le rendu natif.", e);
+		globalThis.LotusVisualI18n?.debug?.("Unable to convert the legacy Visual Stack to native rendering", e);
 	}
 }
 class LotusCardElement extends HTMLElement {
@@ -2420,10 +2457,10 @@ var ht = e((() => {})), Z, gt = e((() => {
 
                 ${n ? D`
                         <section class="panel custom-card-placement">
-                            <h3>Position et taille</h3>
+                            <h3>${this._t("editor.positionAndSize")}</h3>
                             <div class="field-grid">
                                 <label class="field">
-                                    <span>Position X / gauche (%)</span>
+                                    <span>${this._t("editor.positionX")}</span>
                                     <input
                                         type="number"
                                         min="0"
@@ -2436,7 +2473,7 @@ var ht = e((() => {})), Z, gt = e((() => {
                                     />
                                 </label>
                                 <label class="field">
-                                    <span>Position Y / haut (%)</span>
+                                    <span>${this._t("editor.positionY")}</span>
                                     <input
                                         type="number"
                                         min="0"
@@ -2449,18 +2486,18 @@ var ht = e((() => {})), Z, gt = e((() => {
                                     />
                                 </label>
                                 <label class="field">
-                                    <span>Mode de taille</span>
+                                    <span>${this._t("editor.sizeMode")}</span>
                                     <select
                                         .value=${a}
                                         @change=${this._customCardSizeModeChanged}
                                     >
-                                        <option value="px">Pixels</option>
-                                        <option value="percent">Responsive (% du plan)</option>
+                                        <option value="px">${this._t("editor.pixels")}</option>
+                                        <option value="percent">${this._t("editor.responsivePlan")}</option>
                                     </select>
                                 </label>
                                 <div></div>
                                 <label class="field">
-                                    <span>Largeur (${o})</span>
+                                    <span>${this._t("editor.widthWithUnit", { unit:o })}</span>
                                     <input
                                         type="number"
                                         min=${a === "percent" ? "0.1" : "1"}
@@ -2474,22 +2511,22 @@ var ht = e((() => {})), Z, gt = e((() => {
                                 </label>
                                 ${s ? D`
                                     <div class="field">
-                                        <span>Proportions automatiques</span>
+                                        <span>${this._t("editor.autoProportions")}</span>
                                         <div class="ratio-readout">
-                                            ${l.columns} colonne(s) × ${l.rows} ligne(s) — ratio ${l.columns}:${l.rows}
+                                            ${this._t("editor.gridDimensions", { columns:l.columns, rows:l.rows, ratio:`${l.columns}:${l.rows}` })}
                                             <br />
-                                            Taille pixel par défaut : ${l.widthPx} × ${l.heightPx} px
+                                            ${this._t("editor.defaultPixelSize", { width:l.widthPx, height:l.heightPx })}
                                         </div>
                                     </div>
                                 ` : D`
                                     <label class="field">
-                                        <span>Hauteur (${o})</span>
+                                        <span>${this._t("editor.heightWithUnit", { unit:o })}</span>
                                         <input
                                             type="number"
                                             min=${a === "percent" ? "0.1" : "1"}
                                             max=${a === "percent" ? "100" : "4000"}
                                             step=${a === "percent" ? "0.1" : "1"}
-                                            placeholder="Auto"
+                                            placeholder=${this._t("editor.automatic")}
                                             .value=${String(i("height", ""))}
                                             data-style-key="height"
                                             data-style-unit=${o}
@@ -2499,9 +2536,7 @@ var ht = e((() => {})), Z, gt = e((() => {
                                 `}
                             </div>
                             <p class="helper">
-                                ${s
-                                    ? "Chaque case de Visual Stack Card reste carrée. La hauteur est calculée automatiquement à partir du nombre de lignes et de colonnes. En mode Responsive, seule la largeur est exprimée en % du plan."
-                                    : "X et Y restent en pourcentage du plan. En mode Responsive, largeur et hauteur sont calculées par rapport au plan."}
+                                ${this._t(s ? "editor.visualStackSizeHelp" : "editor.responsiveSizeHelp")}
                             </p>
                         </section>
 
@@ -3094,7 +3129,6 @@ var ht = e((() => {})), Z, gt = e((() => {
 		};
 		window.customCards.push(t);
 	}
-	console.info("%c LotusLayers ", "background: #03a9f4; color: white; font-weight: bold;", B(n, "console.loaded", { version: t }));
 }));
 //#endregion
 export default Et();

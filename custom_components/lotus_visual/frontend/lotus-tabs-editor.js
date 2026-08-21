@@ -1,19 +1,23 @@
 import {
+  LOTUS_LAYOUT_KEY,
+  LOTUS_LEGACY_LAYOUT_KEYS,
   deepClone,
   lotusSlugify,
   lotusThemeCss,
   lotusTabEdgeBorderPath,
-} from "./lotus-core.js?v=0.9.6";
+} from "./lotus-core.js?v=0.10.9";
 import {
+  lotusDebug,
   lotusLocalizeSelector,
   lotusSetHass,
   lotusT,
-} from "./lotus-i18n.js?v=0.9.6";
+} from "./lotus-i18n.js?v=0.10.9";
 
 const LOTUS_VIEW_META_KEY = "lotus_visual";
 const LOTUS_TABS_KEY = "tabs";
+const LOTUS_LAYERS_KEY = "layers";
+const LOTUS_DEFAULT_LAYER_ID = "layer-1";
 const LOTUS_VIEW_DISPLAY_KEY = "display";
-const LOTUS_LAYOUT_KEY = "lotus";
 const DEFAULTS = Object.freeze({
   enabled: true,
   position: "bottom",
@@ -201,8 +205,13 @@ const compactDisplay = (display) => {
 };
 
 const getCardTab = (config, fallback) => {
-  const layout = config?.view_layout?.[LOTUS_LAYOUT_KEY];
-  return typeof layout?.tab === "string" && layout.tab ? layout.tab : fallback;
+  const viewLayout = isObject(config?.view_layout) ? config.view_layout : {};
+  const legacyLayout = LOTUS_LEGACY_LAYOUT_KEYS
+    .map((key) => viewLayout[key])
+    .find((value) => isObject(value)) || {};
+  const currentLayout = isObject(viewLayout[LOTUS_LAYOUT_KEY]) ? viewLayout[LOTUS_LAYOUT_KEY] : {};
+  const layout = { ...legacyLayout, ...currentLayout };
+  return typeof layout.tab === "string" && layout.tab ? layout.tab : fallback;
 };
 
 const createHaForm = ({ hass, data, schema, labels, helpers, onChange, className = "" }) => {
@@ -347,13 +356,37 @@ class LotusTabsEditorOverlay extends HTMLElement {
 
       const validIds = new Set(this._tabs.items.map((item) => item.id));
       const fallback = this._tabs.items[0]?.id;
+
+      // Layer sets belong to tabs. Remove data from deleted tabs while keeping
+      // the global fallback used when tabs are disabled.
+      const layerStorage = meta[LOTUS_LAYERS_KEY];
+      if (layerStorage && typeof layerStorage === "object" && !Array.isArray(layerStorage) && layerStorage.tabs && typeof layerStorage.tabs === "object") {
+        const nextTabs = {};
+        for (const [tabId, layers] of Object.entries(layerStorage.tabs)) {
+          if (validIds.has(tabId) && Array.isArray(layers)) nextTabs[tabId] = deepClone(layers);
+        }
+        meta[LOTUS_LAYERS_KEY] = { ...layerStorage, tabs:nextTabs };
+      }
+
       view.cards = (view.cards || []).map((card, index) => {
         const next = deepClone(card);
         const viewLayout = isObject(next.view_layout) ? { ...next.view_layout } : {};
-        const lotus = isObject(viewLayout[LOTUS_LAYOUT_KEY]) ? { ...viewLayout[LOTUS_LAYOUT_KEY] } : {};
+        const legacyLotus = LOTUS_LEGACY_LAYOUT_KEYS
+          .map((key) => viewLayout[key])
+          .find((value) => isObject(value)) || {};
+        const currentLotus = isObject(viewLayout[LOTUS_LAYOUT_KEY]) ? viewLayout[LOTUS_LAYOUT_KEY] : {};
+        // Never replace a legacy geometry record with a partial {tab, layer}
+        // record. Merging here preserves custom x/y/width/height across addon
+        // upgrades and when tabs/layers are edited for the first time.
+        const lotus = { ...deepClone(legacyLotus), ...deepClone(currentLotus) };
+        const previousTab = typeof lotus.tab === "string" && lotus.tab ? lotus.tab : fallback;
         const assigned = validIds.has(this._assignments[index]) ? this._assignments[index] : fallback;
         if (assigned) lotus.tab = assigned;
+        // A layer identifier has meaning only inside its tab. Moving a card to
+        // another tab therefore places it in that tab's base layer.
+        if (assigned && previousTab !== assigned) lotus.layer = LOTUS_DEFAULT_LAYER_ID;
         viewLayout[LOTUS_LAYOUT_KEY] = lotus;
+        for (const legacyKey of LOTUS_LEGACY_LAYOUT_KEYS) delete viewLayout[legacyKey];
         next.view_layout = viewLayout;
         return next;
       });
@@ -363,7 +396,7 @@ class LotusTabsEditorOverlay extends HTMLElement {
       this._onSaved?.(active);
       this._close();
     } catch (error) {
-      console.error("[Lotus Visual] tabs save failed", error);
+      lotusDebug("Tabs save failed", error);
       const status = this.shadowRoot?.querySelector(".save-status");
       if (status) status.textContent = lotusT(`Échec : ${error?.message || error}`);
     } finally {
@@ -401,6 +434,7 @@ class LotusTabsEditorOverlay extends HTMLElement {
     if (edgeFillSide) {
       slot.dataset.edgeFillSide = edgeFillSide;
       slot.style.setProperty("--tab-edge-stroke", edgeStroke || "var(--divider-color,rgba(127,127,127,.24))");
+      slot.dataset.edgeWidth = String(edgeWidth || 1);
       slot.style.setProperty("--tab-edge-width", String(edgeWidth || 1));
     }
 
@@ -462,7 +496,8 @@ class LotusTabsEditorOverlay extends HTMLElement {
       const radius = Number.isFinite(previewRadius) && previewRadius > 0
         ? previewRadius
         : depth * radiusPct / 100;
-      const d = lotusTabEdgeBorderPath(position, slot.dataset.edgeFillSide, rect.width, rect.height, radius);
+      const edgeWidth = clamp(Number(slot.dataset.edgeWidth ?? 1), 0, 10);
+      const d = lotusTabEdgeBorderPath(position, slot.dataset.edgeFillSide, rect.width, rect.height, radius, edgeWidth);
       if (!d) {
         svg.setAttribute("hidden", "");
         return;
@@ -534,7 +569,7 @@ class LotusTabsEditorOverlay extends HTMLElement {
       const underlay = neighbor
         ? colorCss(neighborActive ? neighbor.active_color : neighbor.color, "var(--card-background-color,#fff)")
         : "transparent";
-      const edgeSource = mode === "start" && neighbor ? neighbor : item;
+      const edgeSource = neighbor || item;
       const edgeSourceActive = edgeSource?.id === selected?.id;
       const edgeFg = colorCss(
         edgeSourceActive ? edgeSource?.active_text_color : edgeSource?.text_color,

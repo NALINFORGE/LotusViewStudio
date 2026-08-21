@@ -9,10 +9,10 @@ import {
   makeIconButton,
   fireEvent,
   lotusTabEdgeBorderPath,
-} from "./lotus-core.js?v=0.9.6";
-import { lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.9.6";
-import { registerLotusStackCard, registerLotusSlideCard, registerLotusDigicodeCard } from "./lotus-card-registry.js?v=0.9.6";
-import { openLotusTabsEditor } from "./lotus-tabs-editor.js?v=0.9.6";
+} from "./lotus-core.js?v=0.10.9";
+import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.10.9";
+import { registerLotusStackCard, registerLotusSlideCard, registerLotusDigicodeCard } from "./lotus-card-registry.js?v=0.10.9";
+import { openLotusTabsEditor } from "./lotus-tabs-editor.js?v=0.10.9";
 
 const DEFAULT_LAYOUT = Object.freeze({ x: 2, y: 2, width: 30, height: 18, locked: false, z: 1 });
 
@@ -52,7 +52,59 @@ const LOTUS_VIEW_FILL_KEY = "fill_color";
 const LOTUS_VIEW_LEGACY_FILL_KEY = "lotus_fill_color";
 const LOTUS_VIEW_TABS_KEY = "tabs";
 const LOTUS_VIEW_DISPLAY_KEY = "display";
+const LOTUS_VIEW_LAYERS_KEY = "layers";
+const LOTUS_GLOBAL_LAYER_SCOPE = "__global__";
+const LOTUS_DEFAULT_LAYER_ID = "layer-1";
+const LOTUS_EDITOR_SIDEBAR_STORAGE_KEY = "lotus_visual_editor_sidebar_v1";
 const LOTUS_EDITOR_GUIDES_STORAGE_KEY = "lotus_visual_editor_guides_v1";
+const LOTUS_CARD_CLIPBOARD_STORAGE_KEY = "lotus_visual_card_clipboard_v1";
+let LOTUS_CARD_CLIPBOARD_MEMORY = null;
+
+const normalizeLotusCardClipboard = (value) => {
+  if (!value || typeof value !== "object" || value.schema !== 1) return null;
+  if (!value.card || typeof value.card !== "object" || Array.isArray(value.card)) return null;
+  const layout = value.layout && typeof value.layout === "object" ? value.layout : {};
+  return {
+    schema:1,
+    card:deepClone(value.card),
+    layout:deepClone(layout),
+    source:value.source && typeof value.source === "object" ? deepClone(value.source) : {},
+    copiedAt:Number(value.copiedAt) || Date.now(),
+  };
+};
+
+const loadLotusCardClipboard = () => {
+  if (LOTUS_CARD_CLIPBOARD_MEMORY) return deepClone(LOTUS_CARD_CLIPBOARD_MEMORY);
+  try {
+    const raw = sessionStorage.getItem(LOTUS_CARD_CLIPBOARD_STORAGE_KEY);
+    if (raw) {
+      const normalized = normalizeLotusCardClipboard(JSON.parse(raw));
+      if (normalized) {
+        LOTUS_CARD_CLIPBOARD_MEMORY = normalized;
+        return deepClone(normalized);
+      }
+    }
+  } catch (_error) {
+    // sessionStorage can be unavailable in hardened/private browser contexts.
+  }
+  return LOTUS_CARD_CLIPBOARD_MEMORY ? deepClone(LOTUS_CARD_CLIPBOARD_MEMORY) : null;
+};
+
+const saveLotusCardClipboard = (payload) => {
+  const normalized = normalizeLotusCardClipboard(payload);
+  if (!normalized) return false;
+  LOTUS_CARD_CLIPBOARD_MEMORY = normalized;
+  try {
+    sessionStorage.setItem(LOTUS_CARD_CLIPBOARD_STORAGE_KEY, JSON.stringify(normalized));
+  } catch (_error) {
+    // The in-memory fallback still allows copy/paste while this HA page lives.
+  }
+  return true;
+};
+// Editor-only layer state must survive Home Assistant rebuilding the view after
+// a card save/delete. It is deliberately kept in memory only: leaving edit
+// mode clears it, so hidden layers never become a dashboard display setting.
+const LOTUS_EDITOR_LAYER_SESSION_CACHE = new Map();
 const LOTUS_LAYOUT_POSITION_MIN = -1000;
 const LOTUS_LAYOUT_POSITION_MAX = 1000;
 const LOTUS_EDITOR_ZOOM_MIN = 10;
@@ -102,6 +154,23 @@ const saveEditorGuidePreferences = (preferences) => {
   }
 };
 
+const loadEditorSidebarWidth = () => {
+  try {
+    const value = Number(localStorage.getItem(LOTUS_EDITOR_SIDEBAR_STORAGE_KEY));
+    return Number.isFinite(value) ? Math.max(220, value) : 300;
+  } catch (_error) {
+    return 300;
+  }
+};
+
+const saveEditorSidebarWidth = (value) => {
+  try {
+    localStorage.setItem(LOTUS_EDITOR_SIDEBAR_STORAGE_KEY, String(Math.round(value)));
+  } catch (_error) {
+    // Editor-only preference. Ignore storage failures.
+  }
+};
+
 const isLotusStackConfig = (config) => Boolean(
   config
   && typeof config === "object"
@@ -144,8 +213,16 @@ const digicodeConfigFromCard = (config) => {
   return null;
 };
 
-const digicodeModalBlockerEnabled = (config) => Boolean(
+const slideConfigFromCard = (config) => {
+  if (!config || typeof config !== "object") return null;
+  if (config.type === "custom:lotus-slide-card") return config;
+  if (isNativeConditionalConfig(config)) return slideConfigFromCard(config.card);
+  return null;
+};
+
+const modalBlockerEnabled = (config) => Boolean(
   digicodeConfigFromCard(config)?.interaction?.modal_blocker === true
+  || slideConfigFromCard(config)?.interaction?.modal_blocker === true
 );
 
 // Home Assistant card editors are free to emit only the fields they own. In a
@@ -169,10 +246,16 @@ const installLotusCardLayoutPreservationBridge = () => {
 
     prototype.showDialog = function(params) {
       const originalViewLayout = params?.cardConfig?.view_layout;
-      const storedLotusLayout = originalViewLayout?.[LOTUS_LAYOUT_KEY]
-        || LOTUS_LEGACY_LAYOUT_KEYS.map((key) => originalViewLayout?.[key]).find(Boolean);
+      const legacyLotusLayout = LOTUS_LEGACY_LAYOUT_KEYS
+        .map((key) => originalViewLayout?.[key])
+        .find((value) => value && typeof value === "object") || {};
+      const currentLotusLayout = originalViewLayout?.[LOTUS_LAYOUT_KEY];
+      const storedLotusLayout = {
+        ...deepClone(legacyLotusLayout),
+        ...(currentLotusLayout && typeof currentLotusLayout === "object" ? deepClone(currentLotusLayout) : {}),
+      };
 
-      if (!storedLotusLayout || typeof params?.saveCardConfig !== "function") {
+      if (!Object.keys(storedLotusLayout).length || typeof params?.saveCardConfig !== "function") {
         return originalShowDialog.call(this, params);
       }
 
@@ -191,13 +274,17 @@ const installLotusCardLayoutPreservationBridge = () => {
             ...deepClone(incomingViewLayout),
           };
 
-          const incomingHasLotusLayout = Boolean(
-            incomingViewLayout[LOTUS_LAYOUT_KEY]
-            || LOTUS_LEGACY_LAYOUT_KEYS.some((key) => incomingViewLayout[key]),
-          );
-          if (!incomingHasLotusLayout) {
-            mergedViewLayout[LOTUS_LAYOUT_KEY] = deepClone(storedLotusLayout);
-          }
+          const incomingLegacyLotusLayout = LOTUS_LEGACY_LAYOUT_KEYS
+            .map((key) => incomingViewLayout[key])
+            .find((value) => value && typeof value === "object") || {};
+          const incomingCurrentLotusLayout = incomingViewLayout[LOTUS_LAYOUT_KEY];
+          mergedViewLayout[LOTUS_LAYOUT_KEY] = {
+            ...deepClone(storedLotusLayout),
+            ...deepClone(incomingLegacyLotusLayout),
+            ...(incomingCurrentLotusLayout && typeof incomingCurrentLotusLayout === "object"
+              ? deepClone(incomingCurrentLotusLayout)
+              : {}),
+          };
           for (const legacyKey of LOTUS_LEGACY_LAYOUT_KEYS) delete mergedViewLayout[legacyKey];
 
           return originalSave({
@@ -210,7 +297,7 @@ const installLotusCardLayoutPreservationBridge = () => {
       return originalShowDialog.call(this, wrappedParams);
     };
   }).catch((error) => {
-    console.warn("[Lotus Visual] Impossible de protéger view_layout pendant l’édition", error);
+    lotusDebug("Unable to protect view_layout while editing", error);
   });
 };
 
@@ -230,6 +317,18 @@ class LotusVisualLayout extends HTMLElement {
     this._selectedIndex = null;
     this._selectedIndices = [];
     this._multiSelectMode = false;
+    // Layers are scoped to the active tab. When tabs are disabled, the same
+    // machinery uses one global scope. Visibility remains editor-only while
+    // layer order/name/lock are persisted per scope. Every card resolves to a
+    // layer that belongs to its own tab.
+    this._editorHiddenLayerIdsByScope = new Map();
+    this._editorLockedLayerIdsByScope = new Map();
+    this._activeLayerIdsByScope = new Map();
+    this._renamingLayerId = null;
+    this._layerConfigOverrides = new Map();
+    this._restoredLayerEditorStateKey = null;
+    this._sidebarWidth = loadEditorSidebarWidth();
+    this._sidebarResize = null;
     const guidePreferences = loadEditorGuidePreferences();
     this._showEditorGrid = guidePreferences.showGrid;
     this._showBackgroundFrame = guidePreferences.showFrame;
@@ -246,13 +345,17 @@ class LotusVisualLayout extends HTMLElement {
     this._statusKind = "";
     this._activeTabId = null;
     this._pendingNewCardTabId = null;
+    this._pendingNewCardLayerId = null;
     this._backgroundRatio = null;
     this._backgroundProbeKey = "";
     this._backgroundProbeSequence = 0;
     this._backgroundProbeTimers = [];
     this._modalActiveIndex = null;
     this._resizeObserver = new ResizeObserver(() => this._syncCanvasHeight());
-    this._windowResizeHandler = () => this._syncCanvasHeight();
+    this._windowResizeHandler = () => {
+      this._applySidebarWidth(this._sidebarWidth, false);
+      this._syncCanvasHeight();
+    };
     this._renderShell();
   }
 
@@ -263,11 +366,13 @@ class LotusVisualLayout extends HTMLElement {
   }
 
   disconnectedCallback() {
+    if (this._isEditMode()) this._persistLayerEditorState();
     window.removeEventListener("resize", this._windowResizeHandler);
     this._resizeObserver.disconnect();
     for (const timer of this._backgroundProbeTimers) clearTimeout(timer);
     this._backgroundProbeTimers = [];
     this._backgroundProbeSequence += 1;
+    this._endSidebarResize();
     this._endInteraction();
   }
 
@@ -295,6 +400,11 @@ class LotusVisualLayout extends HTMLElement {
   set lovelace(value) {
     const previousEdit = Boolean(this._lovelace?.editMode);
     const nextEdit = Boolean(value?.editMode);
+    // Home Assistant can replace lovelace.config (and even rebuild this custom
+    // element) after any card operation. Capture the editor layer state before
+    // accepting that update so card mutations cannot reset hidden/locked/active
+    // layer settings.
+    if (previousEdit) this._persistLayerEditorState();
     this._lovelace = value;
     this._viewScrollModeOverride = null;
     if (previousEdit !== nextEdit) {
@@ -303,7 +413,16 @@ class LotusVisualLayout extends HTMLElement {
     if (previousEdit && !nextEdit) {
       this._clearSelection();
       this._multiSelectMode = false;
+      this._editorHiddenLayerIdsByScope.clear();
+      this._editorLockedLayerIdsByScope.clear();
+      this._activeLayerIdsByScope.clear();
+      this._layerConfigOverrides.clear();
+      this._restoredLayerEditorStateKey = null;
+      LOTUS_EDITOR_LAYER_SESSION_CACHE.clear();
+      this._endSidebarResize();
       this._endInteraction();
+    } else if (nextEdit) {
+      this._restoreLayerEditorState(true);
     }
     this._ensureActiveTab();
     this._renderCards();
@@ -312,7 +431,18 @@ class LotusVisualLayout extends HTMLElement {
   get lovelace() { return this._lovelace; }
 
   set index(value) {
-    this._index = Number.isFinite(value) ? value : 0;
+    const nextIndex = Number.isFinite(value) ? value : 0;
+    if (nextIndex !== this._index) {
+      if (this._isEditMode()) this._persistLayerEditorState();
+      this._layerConfigOverrides.clear();
+      this._activeLayerIdsByScope.clear();
+      this._renamingLayerId = null;
+      this._editorHiddenLayerIdsByScope.clear();
+      this._editorLockedLayerIdsByScope.clear();
+      this._restoredLayerEditorStateKey = null;
+    }
+    this._index = nextIndex;
+    if (this._isEditMode()) this._restoreLayerEditorState();
     this._captureBaselineLayouts(true);
     this._renderCards();
   }
@@ -321,17 +451,32 @@ class LotusVisualLayout extends HTMLElement {
   set cards(value) {
     const previousCount = this._cards.length;
     this._cards = Array.isArray(value) ? value : [];
+    if (this._isEditMode()) this._restoreLayerEditorState();
+    if (this._cards.length !== previousCount) {
+      // Adding/removing cards is not a layer-state operation. In particular,
+      // never reveal hidden layers or reset the active/locked layer here.
+      this._ensureActiveLayer();
+    }
     this._previousCardCount = previousCount;
     this._captureBaselineLayouts(true);
     if (this._isEditMode() && this._cards.length > previousCount) {
       this._selectedIndex = this._cards.length - 1;
       this._selectedIndices = [this._selectedIndex];
-      if (this._tabsEnabled() && this._pendingNewCardTabId) {
-        const current = this._workingLayouts.get(this._selectedIndex) || this._readStoredLayout(this._selectedIndex);
-        this._workingLayouts.set(this._selectedIndex, { ...current, tab:this._pendingNewCardTabId });
-        this._dirty = true;
+      const current = this._workingLayouts.get(this._selectedIndex) || this._readStoredLayout(this._selectedIndex);
+      const newCardLayout = {
+        ...current,
+        layer:this._pendingNewCardLayerId || current?.layer || LOTUS_DEFAULT_LAYER_ID,
+      };
+      if (this._tabsEnabled()) {
+        newCardLayout.tab = this._pendingNewCardTabId || current?.tab || this._ensureActiveTab() || this._defaultTabId();
+      } else {
+        delete newCardLayout.tab;
       }
+      this._workingLayouts.set(this._selectedIndex, newCardLayout);
+      this._dirty = true;
+      queueMicrotask(() => { if (this._dirty && !this._saveInProgress) void this._applyChanges("Carte ajoutée au calque actif"); });
       this._pendingNewCardTabId = null;
+      this._pendingNewCardLayerId = null;
       this._statusMessage = "Carte ajoutée";
       this._statusKind = "success";
     } else {
@@ -347,6 +492,7 @@ class LotusVisualLayout extends HTMLElement {
 
   setConfig(config) {
     this._config = config;
+    if (this._isEditMode()) this._restoreLayerEditorState();
     this._ensureActiveTab();
     this._captureBaselineLayouts(true);
     this._syncViewBackground();
@@ -398,6 +544,210 @@ class LotusVisualLayout extends HTMLElement {
           scrollbar-width:thin;
         }
         :host([data-edit-mode="true"]) #toolbar { display:flex; }
+        #editorBody {
+          position:relative;
+          display:flex;
+          flex:1 1 auto;
+          min-width:0;
+          min-height:0;
+          overflow:hidden;
+        }
+        #sideToolbar {
+          position:relative;
+          z-index:65;
+          flex:0 0 var(--lotus-sidebar-width,300px);
+          width:var(--lotus-sidebar-width,300px);
+          min-width:min(220px,30vw);
+          max-width:30vw;
+          display:none;
+          flex-direction:column;
+          box-sizing:border-box;
+          color:var(--lotus-fg);
+          background:color-mix(in srgb,var(--lotus-bg) 98%,transparent);
+          border-left:1px solid var(--lotus-border);
+          box-shadow:-1px 0 5px rgba(0,0,0,.07);
+          overflow:hidden;
+          backdrop-filter:blur(10px);
+        }
+        :host([data-edit-mode="true"]) #sideToolbar { display:flex; }
+        #sideResizeHandle {
+          position:absolute;
+          left:-5px;
+          top:0;
+          bottom:0;
+          z-index:3;
+          width:10px;
+          cursor:ew-resize;
+          touch-action:none;
+        }
+        #sideResizeHandle::after {
+          content:"";
+          position:absolute;
+          left:4px;
+          top:0;
+          bottom:0;
+          width:1px;
+          background:transparent;
+          transition:background .12s ease;
+        }
+        #sideResizeHandle:hover::after,
+        #sideResizeHandle[data-dragging="true"]::after { background:var(--lotus-accent); }
+        .side-scroll {
+          flex:1 1 auto;
+          min-height:0;
+          overflow:auto;
+          padding:8px;
+          scrollbar-width:thin;
+        }
+        .side-section { padding:2px 0 10px; }
+        .side-section[hidden] { display:none !important; }
+        .side-heading {
+          display:flex;
+          align-items:center;
+          gap:8px;
+          margin:5px 2px 8px;
+          color:var(--lotus-muted);
+          font-size:11px;
+          font-weight:750;
+          letter-spacing:.035em;
+          text-transform:uppercase;
+        }
+        .side-heading::after {
+          content:"";
+          flex:1 1 auto;
+          height:1px;
+          background:var(--lotus-border);
+        }
+        .selected-actions {
+          display:flex;
+          flex-direction:column;
+          gap:2px;
+        }
+        .selected-actions[hidden] { display:none !important; }
+        .selection-action-group {
+          display:block;
+          padding-top:2px;
+        }
+        .selection-action-group[hidden] { display:none !important; }
+        .side-subheading {
+          display:flex;
+          align-items:center;
+          gap:7px;
+          margin:8px 2px 5px;
+          color:var(--lotus-muted);
+          font-size:10px;
+          font-weight:700;
+          letter-spacing:.025em;
+        }
+        .side-subheading::after {
+          content:"";
+          flex:1 1 auto;
+          height:1px;
+          background:color-mix(in srgb,var(--lotus-border) 85%,transparent);
+        }
+        .side-tools, .card-action-grid {
+          display:flex;
+          align-items:center;
+          flex-wrap:wrap;
+          gap:4px;
+          margin-bottom:8px;
+        }
+        .side-tools .lotus-icon-button,
+        .card-action-grid .lotus-icon-button { flex:0 0 auto; }
+        .layers-list { display:flex; flex-direction:column; gap:4px; }
+        .layer-row {
+          display:grid;
+          grid-template-columns:30px 30px 30px minmax(0,1fr) 30px;
+          align-items:center;
+          gap:3px;
+          min-height:38px;
+          padding:3px;
+          border:1px solid transparent;
+          border-radius:9px;
+        }
+        .layer-row[data-active="true"] {
+          background:color-mix(in srgb,var(--lotus-accent) 11%,transparent);
+          border-color:color-mix(in srgb,var(--lotus-accent) 28%,var(--lotus-border));
+        }
+        .layer-row[data-hidden="true"] .layer-name-button { opacity:.55; }
+        .layer-mini {
+          appearance:none;
+          display:grid;
+          place-items:center;
+          width:30px;
+          height:30px;
+          padding:0;
+          color:inherit;
+          background:transparent;
+          border:1px solid transparent;
+          border-radius:7px;
+          cursor:pointer;
+        }
+        .layer-mini:hover:not(:disabled) { background:rgba(127,127,127,.10); border-color:var(--lotus-border); }
+        .layer-mini:disabled { opacity:.35; cursor:default; }
+        .layer-mini ha-icon { --mdc-icon-size:18px; }
+        .layer-name-button {
+          min-width:0;
+          appearance:none;
+          border:0;
+          padding:4px 3px;
+          background:transparent;
+          color:inherit;
+          text-align:left;
+          cursor:pointer;
+        }
+        .layer-name { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:650; }
+        .layer-meta { display:block; color:var(--lotus-muted); font-size:10px; line-height:13px; }
+        .layer-rename-input {
+          width:100%;
+          min-width:0;
+          box-sizing:border-box;
+          height:30px;
+          padding:4px 6px;
+          color:inherit;
+          background:var(--lotus-bg);
+          border:1px solid var(--lotus-accent);
+          border-radius:6px;
+          font:inherit;
+          font-size:12px;
+        }
+        .selected-card-header {
+          display:flex;
+          align-items:center;
+          gap:6px;
+          margin:0 2px 8px;
+        }
+        .selected-card-title {
+          flex:1 1 auto;
+          min-width:0;
+          margin:0;
+          font-size:13px;
+          font-weight:700;
+          overflow:hidden;
+          text-overflow:ellipsis;
+          white-space:nowrap;
+        }
+        .selected-card-header-actions {
+          flex:0 0 auto;
+          display:flex;
+          align-items:center;
+        }
+        .selected-card-header-actions .lotus-icon-button {
+          width:32px;
+          height:32px;
+          border-radius:8px;
+        }
+        .selected-card-header-actions .lotus-icon-button ha-icon { --mdc-icon-size:19px; }
+        .selected-card-layer {
+          margin:-4px 2px 8px;
+          color:var(--lotus-muted);
+          font-size:11px;
+        }
+        .layers-empty { padding:14px 8px; color:var(--lotus-muted); font-size:12px; text-align:center; }
+        :host([data-edit-mode="true"]) .lotus-card[data-editor-hidden="true"] {
+          display:none !important;
+          pointer-events:none !important;
+        }
         .selection-info {
           flex:1 1 auto;
           min-width:140px;
@@ -591,6 +941,18 @@ class LotusVisualLayout extends HTMLElement {
           gap:1px;
           flex:0 0 auto;
         }
+        .toolbar-group {
+          display:flex;
+          align-items:center;
+          gap:1px;
+          flex:0 0 auto;
+        }
+        .action-spacer {
+          flex:0 0 9px;
+          width:9px;
+          height:1px;
+          pointer-events:none;
+        }
         .editor-zoom-value {
           appearance:none;
           min-width:54px;
@@ -614,9 +976,10 @@ class LotusVisualLayout extends HTMLElement {
           display:none !important;
         }
         .separator {
+          flex:0 0 1px;
           width:1px;
           height:28px;
-          margin:0 3px;
+          margin:0 5px;
           background:var(--lotus-border);
         }
         #canvas {
@@ -802,6 +1165,7 @@ class LotusVisualLayout extends HTMLElement {
           pointer-events:none !important;
         }
         .lotus-card[data-runtime-visible="false"] {
+          display:none !important;
           pointer-events:none !important;
         }
         .lotus-card[data-runtime-visible="false"] .card-content,
@@ -1019,18 +1383,17 @@ class LotusVisualLayout extends HTMLElement {
         }
       </style>
       <div id="root">
-        <div id="toolbar" role="toolbar" aria-label="Lotus Visual">
+        <div id="toolbar" role="toolbar" aria-label="${lotusT("Outils de l’éditeur Lotus Visual")}">
           <div class="selection-info">
-            <div id="selectedName">Vue Lotus</div>
-            <div id="selectedMetrics"></div>
+            <div id="selectedName">${lotusT("Vue Lotus")}</div>
             <div id="status"></div>
           </div>
           <div class="actions global-actions"></div>
-          <div class="actions selected-actions"></div>
           <div class="actions commit-actions"></div>
         </div>
-        <div id="viewport">
-          <div id="tabsBar" data-visible="false" aria-label="Onglets Lotus"></div>
+        <div id="editorBody">
+          <div id="viewport">
+          <div id="tabsBar" data-visible="false" aria-label="${lotusT("Onglets Lotus")}"></div>
           <div id="scrollspace">
             <div id="canvas" data-empty="true">
               <hui-view-background id="viewBackground" aria-hidden="true"></hui-view-background>
@@ -1045,15 +1408,49 @@ class LotusVisualLayout extends HTMLElement {
               <div id="modalBlocker" data-active="false" aria-hidden="true"></div>
               <div class="empty-state">
                 <div class="empty-card">
-                  <button class="empty-add" type="button" title="Ajouter une carte" aria-label="Ajouter une carte">
+                  <button class="empty-add" type="button" title="${lotusT("Ajouter une carte")}" aria-label="${lotusT("Ajouter une carte")}">
                     <ha-icon icon="mdi:plus"></ha-icon>
                   </button>
-                  <div class="empty-title">Ajouter une carte</div>
-                  <div class="empty-hint">Choisissez un outil Lotus ou une carte Home Assistant.</div>
+                  <div class="empty-title">${lotusT("Ajouter une carte")}</div>
+                  <div class="empty-hint">${lotusT("Choisissez un outil Lotus ou une carte Home Assistant.")}</div>
                 </div>
               </div>
             </div>
           </div>
+          </div>
+          <aside id="sideToolbar" aria-label="${lotusT("Calques et outils de sélection")}">
+            <div id="sideResizeHandle" role="separator" aria-orientation="vertical" aria-label="${lotusT("Redimensionner la barre latérale")}"></div>
+            <div class="side-scroll">
+              <section id="sideLayersSection" class="side-section">
+                <div id="layersHeading" class="side-heading">${lotusT("Calques")}</div>
+                <div class="side-tools layer-toolbar-tools"></div>
+                <div id="layersList" class="layers-list"></div>
+              </section>
+              <section id="sideCardSection" class="side-section" hidden>
+                <div id="selectionHeading" class="side-heading">${lotusT("Sélection")}</div>
+                <div class="selected-card-header">
+                  <div id="sideSelectedName" class="selected-card-title"></div>
+                  <div class="selected-card-header-actions"></div>
+                </div>
+                <div id="selectedMetrics" class="selected-card-layer"></div>
+                <div id="selectedCardLayer" class="selected-card-layer"></div>
+                <div class="selected-actions">
+                  <div id="editActionGroup" class="selection-action-group">
+                    <div id="editHeading" class="side-subheading">${lotusT("Édition")}</div>
+                    <div class="card-action-grid edit-actions"></div>
+                  </div>
+                  <div id="positionActionGroup" class="selection-action-group">
+                    <div id="positionHeading" class="side-subheading">${lotusT("Position")}</div>
+                    <div class="card-action-grid position-actions"></div>
+                  </div>
+                  <div id="cardLayerActionGroup" class="selection-action-group">
+                    <div id="cardLayerHeading" class="side-subheading">${lotusT("Calque")}</div>
+                    <div class="card-action-grid card-layer-tools"></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </aside>
         </div>
       </div>`;
 
@@ -1082,12 +1479,35 @@ class LotusVisualLayout extends HTMLElement {
       this._scrollspace.appendChild(this._editorViewportGrid);
     }
     this._toolbar = this.shadowRoot.getElementById("toolbar");
+    this._editorBody = this.shadowRoot.getElementById("editorBody");
+    this._sideToolbar = this.shadowRoot.getElementById("sideToolbar");
+    this._sideResizeHandle = this.shadowRoot.getElementById("sideResizeHandle");
+    this._layersList = this.shadowRoot.getElementById("layersList");
+    this._layersHeading = this.shadowRoot.getElementById("layersHeading");
+    this._selectionHeading = this.shadowRoot.getElementById("selectionHeading");
+    this._cardLayerHeading = this.shadowRoot.getElementById("cardLayerHeading");
+    this._editHeading = this.shadowRoot.getElementById("editHeading");
+    this._positionHeading = this.shadowRoot.getElementById("positionHeading");
+    this._sideCardSection = this.shadowRoot.getElementById("sideCardSection");
+    this._sideSelectedName = this.shadowRoot.getElementById("sideSelectedName");
+    this._selectedCardLayer = this.shadowRoot.getElementById("selectedCardLayer");
     this._selectedName = this.shadowRoot.getElementById("selectedName");
     this._selectedMetrics = this.shadowRoot.getElementById("selectedMetrics");
     this._status = this.shadowRoot.getElementById("status");
     this._globalActions = this.shadowRoot.querySelector(".global-actions");
     this._selectedActions = this.shadowRoot.querySelector(".selected-actions");
+    this._layerToolbarTools = this.shadowRoot.querySelector(".layer-toolbar-tools");
+    this._cardLayerTools = this.shadowRoot.querySelector(".card-layer-tools");
+    this._editActions = this.shadowRoot.querySelector(".edit-actions");
+    this._positionActions = this.shadowRoot.querySelector(".position-actions");
+    this._selectedCardHeaderActions = this.shadowRoot.querySelector(".selected-card-header-actions");
+    this._cardLayerActionGroup = this.shadowRoot.getElementById("cardLayerActionGroup");
+    this._editActionGroup = this.shadowRoot.getElementById("editActionGroup");
+    this._positionActionGroup = this.shadowRoot.getElementById("positionActionGroup");
     this._commitActions = this.shadowRoot.querySelector(".commit-actions");
+    this._applySidebarWidth(this._sidebarWidth, false);
+    this._sideResizeHandle?.addEventListener("pointerdown", (event) => this._beginSidebarResize(event));
+    this._scrollspace?.addEventListener("click", (event) => this._handleCanvasBlankClick(event));
     this.shadowRoot.querySelector(".empty-add")?.addEventListener("click", () => this._createCard());
     this._buildToolbarButtons();
   }
@@ -1178,29 +1598,89 @@ class LotusVisualLayout extends HTMLElement {
       title:"Ouvrir l’éditeur YAML Home Assistant",
       onClick:() => this._openNativeYamlEditor(),
     });
-    this._guideSeparator = this._separator();
-    this._zoomSeparator = this._separator();
-    this._displaySeparator = this._separator();
-    this._globalActions.append(
+    this._buttons.pasteCard = makeIconButton({
+      icon:"mdi:content-paste",
+      title:"Coller la carte copiée",
+      onClick:() => this._pasteCopiedCard(),
+    });
+    this._buttons.pasteCard.hidden = true;
+    // Barre horizontale : groupes fonctionnels distincts, séparés visuellement.
+    // 1. Cartes : création et collage depuis le presse-papiers Lotus.
+    const cardToolsGroup = this._toolbarGroup(
       this._buttons.add,
+      this._buttons.pasteCard,
+    );
+    // 2. Structure / sélection de la vue.
+    const viewToolsGroup = this._toolbarGroup(
       this._buttons.tabs,
       this._buttons.multiSelect,
-      this._guideSeparator,
+    );
+    // 3. Repères visuels propres à l'éditeur.
+    const guideToolsGroup = this._toolbarGroup(
       this._buttons.guideGrid,
       this._buttons.guideFrame,
       this._buttons.guideScope,
-      this._zoomSeparator,
+    );
+    // 4. Zoom de l'espace de travail.
+    const zoomToolsGroup = this._toolbarGroup(
       this._buttons.zoomOut,
       this._zoomValue,
       this._buttons.zoomIn,
       this._buttons.zoomFit,
       this._buttons.zoomWidth,
       this._buttons.zoomHeight,
-      this._displaySeparator,
+    );
+    // 5. Mode d'affichage final de la vue.
+    const displayToolsGroup = this._toolbarGroup(
       this._buttons.viewFit,
       this._buttons.viewScrollVertical,
       this._buttons.viewScrollHorizontal,
+    );
+    // 6. Outils avancés.
+    const advancedToolsGroup = this._toolbarGroup(
       this._buttons.nativeYaml,
+    );
+    this._globalActions.append(
+      cardToolsGroup,
+      this._separator(),
+      viewToolsGroup,
+      this._separator(),
+      guideToolsGroup,
+      this._separator(),
+      zoomToolsGroup,
+      this._separator(),
+      displayToolsGroup,
+      this._separator(),
+      advancedToolsGroup,
+    );
+
+    // Barre verticale : commandes propres aux calques de l’onglet actif (ou globales sans onglets).
+    this._buttons.layerAdd = makeIconButton({
+      icon:"mdi:plus",
+      title:"Ajouter un calque",
+      onClick:() => this._addLayer(),
+    });
+    this._buttons.layerDelete = makeIconButton({
+      icon:"mdi:delete-outline",
+      title:"Supprimer le calque actif s’il est vide",
+      className:"danger",
+      onClick:() => this._deleteActiveLayer(),
+    });
+    this._buttons.layerBackward = makeIconButton({
+      icon:"mdi:arrange-send-backward",
+      title:"Reculer le calque actif",
+      onClick:() => this._moveActiveLayer(-1),
+    });
+    this._buttons.layerForward = makeIconButton({
+      icon:"mdi:arrange-bring-forward",
+      title:"Avancer le calque actif",
+      onClick:() => this._moveActiveLayer(1),
+    });
+    this._layerToolbarTools?.append(
+      this._buttons.layerAdd,
+      this._buttons.layerDelete,
+      this._buttons.layerBackward,
+      this._buttons.layerForward,
     );
 
     // Actions contextuelles : uniquement lorsqu'une carte est sélectionnée.
@@ -1215,26 +1695,21 @@ class LotusVisualLayout extends HTMLElement {
       onClick:() => this._toggleSelectedLock(),
     });
     this._buttons.duplicate = makeIconButton({
-      icon:"mdi:content-copy",
+      icon:"mdi:content-duplicate",
       title:"Dupliquer la carte",
       onClick:() => this._duplicateSelected(),
     });
+    this._buttons.copyCard = makeIconButton({
+      icon:"mdi:content-copy",
+      title:"Copier la carte",
+      onClick:() => this._copySelectedCard(),
+    });
     this._buttons.moveTab = makeIconButton({
-      icon:"mdi:tab-arrow-right",
+      icon:"lotus:tab-move",
       title:"Déplacer vers un autre onglet",
       onClick:() => this._openMoveCardToTabMenu(),
     });
     this._buttons.moveTab.hidden = true;
-    this._buttons.backward = makeIconButton({
-      icon:"mdi:arrange-send-backward",
-      title:"Reculer d’un plan",
-      onClick:() => this._changeZ(-1),
-    });
-    this._buttons.forward = makeIconButton({
-      icon:"mdi:arrange-bring-forward",
-      title:"Avancer d’un plan",
-      onClick:() => this._changeZ(1),
-    });
     this._buttons.centerOnImageHorizontal = makeIconButton({
       icon:"mdi:align-horizontal-center",
       title:"Centrer horizontalement la carte sur l’image de fond",
@@ -1296,20 +1771,35 @@ class LotusVisualLayout extends HTMLElement {
       className:"danger",
       onClick:() => this._deleteSelectedCards(),
     });
-    this._singleSeparator = this._separator();
-    this._batchSeparator = this._separator();
-    this._distributionSeparator = this._separator();
-    this._selectedActions.append(
-      this._singleSeparator,
+    this._buttons.cardAddToActiveLayer = makeIconButton({
+      icon:"mdi:plus-circle-outline",
+      title:"Ajouter la carte au calque de travail",
+      onClick:() => this._assignSelectedToActiveLayer(),
+    });
+    this._buttons.cardRemoveFromLayer = makeIconButton({
+      icon:"mdi:minus-circle-outline",
+      title:"Retirer la carte de son calque et la replacer dans le Calque 1",
+      onClick:() => this._removeSelectedFromLayer(),
+    });
+    this._buttons.cardMoveLayer = makeIconButton({
+      icon:"mdi:swap-vertical",
+      title:"Déplacer la carte vers un autre calque",
+      onClick:() => this._openMoveCardToLayerMenu(),
+    });
+    const copyDuplicateSpacer = document.createElement("span");
+    copyDuplicateSpacer.className = "action-spacer";
+    copyDuplicateSpacer.setAttribute("aria-hidden", "true");
+    this._editActions?.append(
       this._buttons.edit,
-      this._buttons.lock,
+      this._buttons.copyCard,
+      copyDuplicateSpacer,
       this._buttons.duplicate,
+      this._buttons.lock,
       this._buttons.moveTab,
-      this._buttons.backward,
-      this._buttons.forward,
+    );
+    this._positionActions?.append(
       this._buttons.centerOnImageHorizontal,
       this._buttons.centerOnImageVertical,
-      this._batchSeparator,
       this._buttons.alignLeft,
       this._buttons.alignHCenter,
       this._buttons.alignRight,
@@ -1317,12 +1807,720 @@ class LotusVisualLayout extends HTMLElement {
       this._buttons.alignVCenter,
       this._buttons.alignBottom,
       this._buttons.sameSize,
-      this._distributionSeparator,
       this._buttons.distributeHorizontal,
       this._buttons.distributeVertical,
+    );
+    this._cardLayerTools?.append(
+      this._buttons.cardAddToActiveLayer,
+      this._buttons.cardMoveLayer,
+      this._buttons.cardRemoveFromLayer,
+    );
+    this._selectedCardHeaderActions?.append(
       this._buttons.delete,
     );
 
+  }
+
+  _layerEditorStateKey(index = this._index) {
+    const view = this._lovelace?.config?.views?.[index] || (index === this._index ? this._config : null) || {};
+    const path = typeof view?.path === "string" && view.path ? view.path : "";
+    const title = typeof view?.title === "string" && view.title ? view.title : "";
+    const routeRoot = (() => {
+      try {
+        const segment = String(window?.location?.pathname || "").split("/").filter(Boolean)[0] || "lovelace";
+        return segment;
+      } catch (_error) {
+        return "lovelace";
+      }
+    })();
+    return `${routeRoot}|${index}|${path}|${title}`;
+  }
+
+  _persistLayerEditorState() {
+    if (!this._isEditMode()) return;
+    const key = this._layerEditorStateKey();
+    const scopes = this._tabsEnabled()
+      ? this._tabsConfig().items.map((item) => item.id)
+      : [LOTUS_GLOBAL_LAYER_SCOPE];
+    const layerConfigs = {};
+    for (const scopeKey of scopes) {
+      layerConfigs[scopeKey] = this._serializeLayers(
+        this._layersConfig(this._currentViewConfig(), scopeKey),
+      );
+    }
+    const hidden = {};
+    for (const [scopeKey, ids] of this._editorHiddenLayerIdsByScope.entries()) hidden[scopeKey] = [...ids];
+    const editorLocked = {};
+    for (const [scopeKey, ids] of this._editorLockedLayerIdsByScope.entries()) editorLocked[scopeKey] = [...ids];
+    const active = Object.fromEntries(this._activeLayerIdsByScope.entries());
+    LOTUS_EDITOR_LAYER_SESSION_CACHE.set(key, { layerConfigs, hidden, editorLocked, active });
+    this._restoredLayerEditorStateKey = key;
+  }
+
+  _restoreLayerEditorState(force = false) {
+    if (!this._isEditMode()) return;
+    const key = this._layerEditorStateKey();
+    if (!force && this._restoredLayerEditorStateKey === key) return;
+    const state = LOTUS_EDITOR_LAYER_SESSION_CACHE.get(key);
+    if (!state) {
+      this._restoredLayerEditorStateKey = key;
+      return;
+    }
+
+    this._editorHiddenLayerIdsByScope = new Map(
+      Object.entries(state.hidden || {}).map(([scopeKey, ids]) => [scopeKey, new Set(Array.isArray(ids) ? ids : [])]),
+    );
+    this._editorLockedLayerIdsByScope = new Map(
+      Object.entries(state.editorLocked || {}).map(([scopeKey, ids]) => [scopeKey, new Set(Array.isArray(ids) ? ids : [])]),
+    );
+    this._activeLayerIdsByScope = new Map(Object.entries(state.active || {}));
+    this._layerConfigOverrides = new Map(
+      Object.entries(state.layerConfigs || {}).map(([scopeKey, layers]) => [scopeKey, this._normalizeLayerList(layers)]),
+    );
+    this._restoredLayerEditorStateKey = key;
+  }
+
+  _layerScopeKeyForTab(tabId = null) {
+    if (!this._tabsEnabled()) return LOTUS_GLOBAL_LAYER_SCOPE;
+    const candidate = typeof tabId === "string" && tabId ? tabId : this._ensureActiveTab();
+    return candidate || LOTUS_GLOBAL_LAYER_SCOPE;
+  }
+
+  _currentLayerScopeKey() {
+    return this._layerScopeKeyForTab(this._tabsEnabled() ? this._ensureActiveTab() : null);
+  }
+
+  _layerScopeKeyForCard(index) {
+    if (!this._tabsEnabled()) return LOTUS_GLOBAL_LAYER_SCOPE;
+    return this._layerScopeKeyForTab(this._cardTabId(index));
+  }
+
+  _scopeSet(store, scopeKey = this._currentLayerScopeKey()) {
+    if (!store.has(scopeKey)) store.set(scopeKey, new Set());
+    return store.get(scopeKey);
+  }
+
+  _hiddenLayerIds(scopeKey = this._currentLayerScopeKey()) {
+    return this._scopeSet(this._editorHiddenLayerIdsByScope, scopeKey);
+  }
+
+  _editorLockedLayerIds(scopeKey = this._currentLayerScopeKey()) {
+    return this._scopeSet(this._editorLockedLayerIdsByScope, scopeKey);
+  }
+
+  _normalizeLayerList(source) {
+    const seen = new Set();
+    const layers = [];
+    for (const item of Array.isArray(source) ? source : []) {
+      if (!item || typeof item !== "object") continue;
+      const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : null;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const numericId = /^layer-(\d+)$/.exec(id)?.[1];
+      const fallbackName = id === LOTUS_DEFAULT_LAYER_ID ? "Calque 1" : `Calque ${numericId || layers.length + 1}`;
+      layers.push({ id, name:typeof item.name === "string" && item.name.trim() ? item.name.trim() : fallbackName, locked:Boolean(item.locked) });
+    }
+    const base = layers.find((layer) => layer.id === LOTUS_DEFAULT_LAYER_ID);
+    if (!base) layers.unshift({ id:LOTUS_DEFAULT_LAYER_ID, name:"Calque 1", locked:false });
+    return layers.length ? layers : [{ id:LOTUS_DEFAULT_LAYER_ID, name:"Calque 1", locked:false }];
+  }
+
+  _referencedLayerIds(view = this._currentViewConfig(), scopeKey = this._currentLayerScopeKey()) {
+    const referenced = [];
+    const seen = new Set();
+    const tabs = this._tabsConfig();
+    const validTabIds = new Set(tabs.items.map((item) => item.id));
+    const fallbackTabId = tabs.items[0]?.id || null;
+    for (const card of Array.isArray(view?.cards) ? view.cards : []) {
+      const viewLayout = card?.view_layout || {};
+      const legacyStored = LOTUS_LEGACY_LAYOUT_KEYS
+        .map((key) => viewLayout[key])
+        .find((value) => value && typeof value === "object") || {};
+      const currentStored = viewLayout[LOTUS_LAYOUT_KEY];
+      const stored = {
+        ...legacyStored,
+        ...(currentStored && typeof currentStored === "object" ? currentStored : {}),
+      };
+      const cardScope = tabs.enabled
+        ? (validTabIds.has(stored.tab) ? stored.tab : fallbackTabId)
+        : LOTUS_GLOBAL_LAYER_SCOPE;
+      if (cardScope !== scopeKey) continue;
+      const layerId = typeof stored.layer === "string" && stored.layer.trim() ? stored.layer.trim() : LOTUS_DEFAULT_LAYER_ID;
+      if (seen.has(layerId)) continue;
+      seen.add(layerId);
+      referenced.push(layerId);
+    }
+    return referenced;
+  }
+
+  _layersConfig(view = this._currentViewConfig(), scopeKey = this._currentLayerScopeKey()) {
+    const override = this._layerConfigOverrides.get(scopeKey);
+    if (Array.isArray(override)) return this._normalizeLayerList(override);
+
+    const raw = view?.[LOTUS_VIEW_META_KEY]?.[LOTUS_VIEW_LAYERS_KEY];
+    let source = [];
+    if (Array.isArray(raw)) {
+      // 0.10.2 and older stored one global list. While migrating, use it as a
+      // template for every tab so existing card layer assignments are kept.
+      source = raw;
+    } else if (raw && typeof raw === "object") {
+      if (scopeKey !== LOTUS_GLOBAL_LAYER_SCOPE && Array.isArray(raw.tabs?.[scopeKey])) {
+        source = raw.tabs[scopeKey];
+      } else if (scopeKey === LOTUS_GLOBAL_LAYER_SCOPE && Array.isArray(raw.global)) {
+        source = raw.global;
+      } else if (scopeKey === LOTUS_GLOBAL_LAYER_SCOPE && raw.tabs && typeof raw.tabs === "object") {
+        source = Object.values(raw.tabs).find((layers) => Array.isArray(layers)) || [];
+      } else if (scopeKey !== LOTUS_GLOBAL_LAYER_SCOPE && Array.isArray(raw.global)) {
+        // A tab without its own layer set starts from the global template, but
+        // becomes independent as soon as its layers are edited.
+        source = raw.global;
+      } else if (Array.isArray(raw[scopeKey])) {
+        // Transitional direct-map shape accepted defensively.
+        source = raw[scopeKey];
+      }
+    }
+    const normalized = this._normalizeLayerList(source);
+    const known = new Set(normalized.map((layer) => layer.id));
+    // 0.10.3 could transiently lose a tab's layer catalogue while the cards
+    // themselves still retained their layer identifiers. Never demote those
+    // cards to layer-1: reconstruct missing layer descriptors from the saved
+    // card metadata, then persist the repaired catalogue on the next save.
+    for (const layerId of this._referencedLayerIds(view, scopeKey)) {
+      if (known.has(layerId)) continue;
+      known.add(layerId);
+      const numericId = /^layer-(\d+)$/.exec(layerId)?.[1];
+      normalized.push({
+        id:layerId,
+        name:layerId === LOTUS_DEFAULT_LAYER_ID ? "Calque 1" : `Calque ${numericId || normalized.length + 1}`,
+        locked:false,
+      });
+    }
+    return normalized;
+  }
+
+  _ensureActiveLayer(scopeKey = this._currentLayerScopeKey()) {
+    const layers = this._layersConfig(this._currentViewConfig(), scopeKey);
+    let active = this._activeLayerIdsByScope.get(scopeKey);
+    if (!layers.some((layer) => layer.id === active)) {
+      active = layers[0].id;
+      this._activeLayerIdsByScope.set(scopeKey, active);
+    }
+    return active;
+  }
+
+  _layerById(layerId, scopeKey = this._currentLayerScopeKey()) {
+    const layers = this._layersConfig(this._currentViewConfig(), scopeKey);
+    return layers.find((layer) => layer.id === layerId) || layers[0];
+  }
+
+  _layerIdForCard(index) {
+    const scopeKey = this._layerScopeKeyForCard(index);
+    const layers = this._layersConfig(this._currentViewConfig(), scopeKey);
+    const ids = new Set(layers.map((layer) => layer.id));
+    const layout = this._workingLayouts.get(index) || this._readStoredLayout(index);
+    return typeof layout?.layer === "string" && ids.has(layout.layer) ? layout.layer : LOTUS_DEFAULT_LAYER_ID;
+  }
+
+  _layerCardIndices(layerId, scopeKey = this._currentLayerScopeKey()) {
+    const indices = [];
+    for (let index = 0; index < this._cards.length; index += 1) {
+      if (this._layerScopeKeyForCard(index) !== scopeKey) continue;
+      if (this._layerIdForCard(index) === layerId) indices.push(index);
+    }
+    return indices;
+  }
+
+  _layerOrderIndex(layerId, scopeKey = this._currentLayerScopeKey()) {
+    const index = this._layersConfig(this._currentViewConfig(), scopeKey).findIndex((layer) => layer.id === layerId);
+    return Math.max(0, index);
+  }
+
+  _effectiveLayerZ(index, layout = this._layerLayout(index)) {
+    const scopeKey = this._layerScopeKeyForCard(index);
+    const layerId = typeof layout?.layer === "string" ? layout.layer : this._layerIdForCard(index);
+    const layerIndex = this._layerOrderIndex(layerId, scopeKey);
+    const localZ = Math.max(0, Math.round(Number(layout?.z ?? index + 1) || 0));
+    return layerIndex * 10000 + Math.min(localZ, 9999);
+  }
+
+  _layerLayout(index) {
+    return this._workingLayouts.get(index) || this._readStoredLayout(index);
+  }
+
+  _isLayerLocked(layerId, scopeKey = this._currentLayerScopeKey()) {
+    return Boolean(this._layerById(layerId, scopeKey)?.locked || this._editorLockedLayerIds(scopeKey).has(layerId));
+  }
+
+  _isCardEditorLocked(index) {
+    const layout = this._layerLayout(index);
+    const scopeKey = this._layerScopeKeyForCard(index);
+    return Boolean(layout?.locked || this._isLayerLocked(this._layerIdForCard(index), scopeKey));
+  }
+
+  _isLayerAbove(index, referenceIndex) {
+    return this._effectiveLayerZ(index) > this._effectiveLayerZ(referenceIndex);
+  }
+
+  _setEditorLayerHidden(layerId, hidden, scopeKey = this._currentLayerScopeKey()) {
+    if (!this._layersConfig(this._currentViewConfig(), scopeKey).some((layer) => layer.id === layerId)) return;
+    const hiddenIds = this._hiddenLayerIds(scopeKey);
+    if (hidden) hiddenIds.add(layerId);
+    else hiddenIds.delete(layerId);
+
+    if (hidden) {
+      this._selectedIndices = this._selectedIndices.filter((index) => !(this._layerScopeKeyForCard(index) === scopeKey && this._layerIdForCard(index) === layerId));
+      this._selectedIndex = this._selectedIndices[0] ?? null;
+    }
+    for (let index = 0; index < this._cards.length; index += 1) {
+      if (this._layerScopeKeyForCard(index) !== scopeKey || this._layerIdForCard(index) !== layerId) continue;
+      const wrapper = this._canvas?.querySelector(`.lotus-card[data-index="${index}"]`);
+      if (wrapper) wrapper.dataset.editorHidden = String(Boolean(hidden));
+    }
+    this._persistLayerEditorState();
+  }
+
+  _toggleEditorLayerVisibility(layerId) {
+    const scopeKey = this._currentLayerScopeKey();
+    this._setEditorLayerHidden(layerId, !this._hiddenLayerIds(scopeKey).has(layerId), scopeKey);
+    this._syncSelectionState();
+    this._renderLayersPanel();
+    this._updateToolbar();
+  }
+
+  _toggleEditorLayerLock(layerId) {
+    if (this._saveInProgress || this._dirty) return;
+    const layers = this._layersConfig().map((layer) => ({ ...layer }));
+    const layer = layers.find((candidate) => candidate.id === layerId);
+    if (!layer) return;
+    layer.locked = !layer.locked;
+    void this._saveLayersConfig(layers, layer.locked ? "Calque verrouillé" : "Calque déverrouillé");
+  }
+
+  _showAllEditorLayers() {
+    const scopeKey = this._currentLayerScopeKey();
+    const hiddenIds = this._hiddenLayerIds(scopeKey);
+    if (!hiddenIds.size) return;
+    hiddenIds.clear();
+    for (const wrapper of this._canvas?.querySelectorAll('.lotus-card[data-editor-hidden="true"]') || []) {
+      const index = Number(wrapper.dataset.index);
+      if (this._layerScopeKeyForCard(index) === scopeKey) wrapper.dataset.editorHidden = "false";
+    }
+    this._persistLayerEditorState();
+    this._renderLayersPanel();
+    this._updateToolbar();
+  }
+
+  _hideLayersAboveSelected() {
+    if (this._selectedIndex === null) return;
+    const scopeKey = this._layerScopeKeyForCard(this._selectedIndex);
+    const selectedLayerIndex = this._layerOrderIndex(this._layerIdForCard(this._selectedIndex), scopeKey);
+    const layers = this._layersConfig(this._currentViewConfig(), scopeKey);
+    for (let index = selectedLayerIndex + 1; index < layers.length; index += 1) {
+      this._setEditorLayerHidden(layers[index].id, true, scopeKey);
+    }
+    this._renderLayersPanel();
+    this._updateToolbar();
+  }
+
+  _setActiveLayer(layerId) {
+    const scopeKey = this._currentLayerScopeKey();
+    if (!this._layersConfig(this._currentViewConfig(), scopeKey).some((layer) => layer.id === layerId)) return;
+    this._activeLayerIdsByScope.set(scopeKey, layerId);
+    this._renamingLayerId = null;
+    this._persistLayerEditorState();
+    this._renderLayersPanel();
+    this._updateToolbar();
+  }
+
+  _serializeLayers(layers) {
+    return this._normalizeLayerList(layers).map((layer) => ({ id:layer.id, name:layer.name, ...(layer.locked ? { locked:true } : {}) }));
+  }
+
+  _layerStorageForSave(raw) {
+    const base = [{ id:LOTUS_DEFAULT_LAYER_ID, name:"Calque 1" }];
+    if (Array.isArray(raw)) return { global:this._serializeLayers(raw), tabs:{} };
+    if (raw && typeof raw === "object") {
+      const global = Array.isArray(raw.global) ? this._serializeLayers(raw.global) : base;
+      const tabs = {};
+      if (raw.tabs && typeof raw.tabs === "object") {
+        for (const [tabId, layers] of Object.entries(raw.tabs)) {
+          if (Array.isArray(layers)) tabs[tabId] = this._serializeLayers(layers);
+        }
+      }
+      // Also accept the short-lived direct-map shape if encountered.
+      for (const [key, layers] of Object.entries(raw)) {
+        if (key === "global" || key === "tabs" || !Array.isArray(layers)) continue;
+        tabs[key] = this._serializeLayers(layers);
+      }
+      return { global, tabs };
+    }
+    return { global:base, tabs:{} };
+  }
+
+  async _saveLayersConfig(layers, successMessage) {
+    if (this._saveInProgress || this._dirty) return false;
+    if (!this._lovelace?.config || typeof this._lovelace?.saveConfig !== "function") {
+      this._statusMessage = "Enregistrement des calques indisponible";
+      this._statusKind = "error";
+      this._updateToolbar();
+      return false;
+    }
+    const scopeKey = this._currentLayerScopeKey();
+    const previousOverride = this._layerConfigOverrides.has(scopeKey)
+      ? this._layerConfigOverrides.get(scopeKey).map((layer) => ({ ...layer }))
+      : null;
+    this._layerConfigOverrides.set(scopeKey, layers.map((layer) => ({ ...layer })));
+    this._persistLayerEditorState();
+    try {
+      this._saveInProgress = true;
+      this._statusMessage = "Enregistrement des calques…";
+      this._statusKind = "";
+      this._updateToolbar();
+      const newConfig = this._buildConfigWithWorkingLayouts();
+      const view = newConfig?.views?.[this._index];
+      if (!view) return false;
+      const meta = view[LOTUS_VIEW_META_KEY] && typeof view[LOTUS_VIEW_META_KEY] === "object"
+        ? { ...view[LOTUS_VIEW_META_KEY] }
+        : {};
+      const storage = this._layerStorageForSave(meta[LOTUS_VIEW_LAYERS_KEY]);
+      const serialized = this._serializeLayers(layers);
+      if (scopeKey === LOTUS_GLOBAL_LAYER_SCOPE || !this._tabsEnabled()) storage.global = serialized;
+      else storage.tabs[scopeKey] = serialized;
+      meta[LOTUS_VIEW_LAYERS_KEY] = storage;
+      view[LOTUS_VIEW_META_KEY] = meta;
+      await this._lovelace.saveConfig(newConfig);
+      this._statusMessage = successMessage;
+      this._statusKind = "success";
+      return true;
+    } catch (error) {
+      if (previousOverride) this._layerConfigOverrides.set(scopeKey, previousOverride);
+      else this._layerConfigOverrides.delete(scopeKey);
+      this._persistLayerEditorState();
+      lotusDebug("Unable to save layers", error);
+      this._statusMessage = `Échec de l’enregistrement des calques : ${error?.message || error}`;
+      this._statusKind = "error";
+      return false;
+    } finally {
+      this._saveInProgress = false;
+      this._ensureActiveLayer(scopeKey);
+      this._persistLayerEditorState();
+      this._renderCards();
+      this._updateToolbar();
+    }
+  }
+
+  async _addLayer() {
+    if (this._saveInProgress || this._dirty) return;
+    const scopeKey = this._currentLayerScopeKey();
+    const layers = this._layersConfig(this._currentViewConfig(), scopeKey).map((layer) => ({ ...layer }));
+    const used = new Set(layers.map((layer) => layer.id));
+    let ordinal = layers.length + 1;
+    let id = `layer-${ordinal}`;
+    while (used.has(id)) { ordinal += 1; id = `layer-${ordinal}`; }
+    const layer = { id, name:`Calque ${layers.length + 1}` };
+    layers.push(layer);
+    this._activeLayerIdsByScope.set(scopeKey, id);
+    const saved = await this._saveLayersConfig(layers, `Calque « ${layer.name} » ajouté`);
+    if (saved) {
+      this._renamingLayerId = id;
+      this._renderLayersPanel();
+    }
+  }
+
+  async _deleteActiveLayer() {
+    if (this._saveInProgress || this._dirty) return;
+    const scopeKey = this._currentLayerScopeKey();
+    const layers = this._layersConfig(this._currentViewConfig(), scopeKey);
+    const active = this._ensureActiveLayer(scopeKey);
+    if (layers.length <= 1 || active === LOTUS_DEFAULT_LAYER_ID) return;
+    if (this._layerCardIndices(active, scopeKey).length) {
+      this._statusMessage = "Le calque doit être vide avant d’être supprimé.";
+      this._statusKind = "error";
+      this._updateToolbar();
+      return;
+    }
+    const index = layers.findIndex((layer) => layer.id === active);
+    const next = layers.filter((layer) => layer.id !== active);
+    this._activeLayerIdsByScope.set(scopeKey, next[Math.max(0, Math.min(index - 1, next.length - 1))]?.id || LOTUS_DEFAULT_LAYER_ID);
+    this._hiddenLayerIds(scopeKey).delete(active);
+    this._editorLockedLayerIds(scopeKey).delete(active);
+    this._persistLayerEditorState();
+    await this._saveLayersConfig(next, "Calque vide supprimé");
+  }
+
+  async _moveActiveLayer(delta) {
+    if (this._saveInProgress || this._dirty) return;
+    const scopeKey = this._currentLayerScopeKey();
+    const layers = this._layersConfig(this._currentViewConfig(), scopeKey).map((layer) => ({ ...layer }));
+    const active = this._ensureActiveLayer(scopeKey);
+    const index = layers.findIndex((layer) => layer.id === active);
+    const target = index + (delta > 0 ? 1 : -1);
+    if (index < 0 || target < 0 || target >= layers.length) return;
+    [layers[index], layers[target]] = [layers[target], layers[index]];
+    await this._saveLayersConfig(layers, delta > 0 ? "Calque avancé" : "Calque reculé");
+  }
+
+  _startLayerRename(layerId) {
+    this._renamingLayerId = layerId;
+    this._renderLayersPanel();
+  }
+
+  async _renameLayer(layerId, rawName) {
+    const layers = this._layersConfig().map((layer) => ({ ...layer }));
+    const layer = layers.find((candidate) => candidate.id === layerId);
+    if (!layer) return;
+    const name = String(rawName || "").trim();
+    this._renamingLayerId = null;
+    if (!name || name === layer.name) {
+      this._renderLayersPanel();
+      return;
+    }
+    layer.name = name.slice(0, 80);
+    await this._saveLayersConfig(layers, `Calque renommé « ${layer.name} »`);
+  }
+
+  _renderLayersPanel() {
+    if (!this._layersList) return;
+    const focusedRename = this._layersList.querySelector(".layer-rename-input");
+    if (focusedRename && this.shadowRoot?.activeElement === focusedRename && this._renamingLayerId) return;
+    const layers = this._layersConfig();
+    const active = this._ensureActiveLayer();
+    this._layersList.replaceChildren();
+
+    layers.slice().reverse().forEach((layer) => {
+      const hidden = this._hiddenLayerIds().has(layer.id);
+      const locked = this._isLayerLocked(layer.id);
+      const count = this._layerCardIndices(layer.id).length;
+      const row = document.createElement("div");
+      row.className = "layer-row";
+      row.dataset.active = String(layer.id === active);
+      row.dataset.hidden = String(hidden);
+
+      const work = document.createElement("button");
+      work.type = "button";
+      work.className = "layer-mini";
+      work.title = lotusT(layer.id === active ? "Calque de travail actif" : "Travailler dans ce calque");
+      work.setAttribute("aria-label", work.title);
+      const workIcon = document.createElement("ha-icon");
+      workIcon.setAttribute("icon", layer.id === active ? "mdi:check-circle" : "mdi:circle-outline");
+      work.appendChild(workIcon);
+      work.addEventListener("click", () => this._setActiveLayer(layer.id));
+
+      const eye = document.createElement("button");
+      eye.type = "button";
+      eye.className = "layer-mini";
+      eye.title = lotusT(hidden ? "Afficher ce calque dans l’éditeur" : "Masquer ce calque dans l’éditeur");
+      eye.setAttribute("aria-label", eye.title);
+      const eyeIcon = document.createElement("ha-icon");
+      eyeIcon.setAttribute("icon", hidden ? "mdi:eye-off-outline" : "mdi:eye-outline");
+      eye.appendChild(eyeIcon);
+      eye.addEventListener("click", () => this._toggleEditorLayerVisibility(layer.id));
+
+      const lock = document.createElement("button");
+      lock.type = "button";
+      lock.className = "layer-mini";
+      lock.title = lotusT(locked ? "Déverrouiller ce calque" : "Verrouiller ce calque");
+      lock.setAttribute("aria-label", lock.title);
+      const lockIcon = document.createElement("ha-icon");
+      lockIcon.setAttribute("icon", locked ? "mdi:lock" : "mdi:lock-open-variant-outline");
+      lock.appendChild(lockIcon);
+      lock.addEventListener("click", () => this._toggleEditorLayerLock(layer.id));
+
+      let nameControl;
+      if (this._renamingLayerId === layer.id) {
+        const input = document.createElement("input");
+        input.className = "layer-rename-input";
+        input.value = layer.name;
+        input.maxLength = 80;
+        input.setAttribute("aria-label", lotusT("Nom du calque"));
+        let committed = false;
+        const commit = () => {
+          if (committed) return;
+          committed = true;
+          void this._renameLayer(layer.id, input.value);
+        };
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") { event.preventDefault(); commit(); }
+          else if (event.key === "Escape") { event.preventDefault(); this._renamingLayerId = null; this._renderLayersPanel(); }
+        });
+        input.addEventListener("blur", commit);
+        nameControl = input;
+        queueMicrotask(() => { input.focus(); input.select(); });
+      } else {
+        const nameButton = document.createElement("button");
+        nameButton.type = "button";
+        nameButton.className = "layer-name-button";
+        nameButton.title = lotusT("Définir comme calque de travail");
+        const name = document.createElement("span");
+        name.className = "layer-name";
+        name.textContent = layer.name;
+        const meta = document.createElement("span");
+        meta.className = "layer-meta";
+        meta.textContent = `${count} ${lotusT(count > 1 ? "cartes" : "carte")}${locked ? ` · ${lotusT("verrouillé")}` : ""}${hidden ? ` · ${lotusT("masqué")}` : ""}`;
+        nameButton.append(name, meta);
+        nameButton.addEventListener("click", () => this._setActiveLayer(layer.id));
+        nameButton.addEventListener("dblclick", (event) => { event.preventDefault(); this._startLayerRename(layer.id); });
+        nameControl = nameButton;
+      }
+
+      const rename = document.createElement("button");
+      rename.type = "button";
+      rename.className = "layer-mini";
+      rename.title = lotusT("Renommer le calque");
+      rename.setAttribute("aria-label", rename.title);
+      const renameIcon = document.createElement("ha-icon");
+      renameIcon.setAttribute("icon", "mdi:pencil-outline");
+      rename.appendChild(renameIcon);
+      rename.addEventListener("click", () => this._startLayerRename(layer.id));
+
+      row.append(work, eye, lock, nameControl, rename);
+      this._layersList.appendChild(row);
+    });
+  }
+
+  _applySidebarWidth(value, persist = true) {
+    const max = Math.max(1, Math.floor(window.innerWidth * 0.30));
+    const min = Math.min(220, max);
+    this._sidebarWidth = clamp(Number(value) || 300, min, max);
+    this._sideToolbar?.style.setProperty("--lotus-sidebar-width", `${Math.round(this._sidebarWidth)}px`);
+    if (persist) saveEditorSidebarWidth(this._sidebarWidth);
+  }
+
+  _beginSidebarResize(event) {
+    if (!this._isEditMode() || this._saveInProgress || (event.pointerType === "mouse" && event.button !== 0)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this._sidebarResize = { pointerId:event.pointerId, startX:event.clientX, startWidth:this._sidebarWidth };
+    this._sideResizeHandle.dataset.dragging = "true";
+    this._sideResizeHandle.setPointerCapture?.(event.pointerId);
+    this._sidebarResizeMove = (moveEvent) => {
+      if (!this._sidebarResize || moveEvent.pointerId !== this._sidebarResize.pointerId) return;
+      const delta = this._sidebarResize.startX - moveEvent.clientX;
+      this._applySidebarWidth(this._sidebarResize.startWidth + delta, false);
+      this._syncCanvasHeight();
+    };
+    this._sidebarResizeEnd = (upEvent) => {
+      if (this._sidebarResize && upEvent.pointerId === this._sidebarResize.pointerId) this._endSidebarResize();
+    };
+    window.addEventListener("pointermove", this._sidebarResizeMove);
+    window.addEventListener("pointerup", this._sidebarResizeEnd);
+    window.addEventListener("pointercancel", this._sidebarResizeEnd);
+  }
+
+  _endSidebarResize() {
+    if (!this._sidebarResize) return;
+    saveEditorSidebarWidth(this._sidebarWidth);
+    this._sidebarResize = null;
+    if (this._sideResizeHandle) this._sideResizeHandle.dataset.dragging = "false";
+    window.removeEventListener("pointermove", this._sidebarResizeMove);
+    window.removeEventListener("pointerup", this._sidebarResizeEnd);
+    window.removeEventListener("pointercancel", this._sidebarResizeEnd);
+    requestAnimationFrame(() => this._syncCanvasHeight());
+  }
+
+  _handleCanvasBlankClick(event) {
+    if (!this._isEditMode() || this._saveInProgress) return;
+    const path = event.composedPath?.() || [];
+    if (path.some((node) => node?.classList?.contains?.("lotus-card") || node?.classList?.contains?.("empty-card") || node?.closest?.("button,input,select,textarea"))) return;
+    if (!this._selectedIndices.length) return;
+    this._clearSelection();
+    this._statusMessage = "";
+    this._statusKind = "";
+    this._updateToolbar();
+    this._renderTabs();
+  }
+
+  async _assignSelectedToLayer(layerId, message = "Carte déplacée vers le calque") {
+    if (!this._selectedIndices.length || this._saveInProgress || this._dirty) return;
+    if (this._selectedIndices.some((index) => this._isCardEditorLocked(index))) return;
+    if (!this._layersConfig().some((layer) => layer.id === layerId)) return;
+    const changed = [];
+    for (const index of this._selectedIndices) {
+      const current = { ...(this._workingLayouts.get(index) || this._readStoredLayout(index)) };
+      if (this._layerIdForCard(index) === layerId) continue;
+      this._workingLayouts.set(index, { ...current, layer:layerId });
+      changed.push(index);
+    }
+    if (!changed.length) return;
+    this._markDirty();
+    for (const index of changed) this._applyLayoutToWrapper(index);
+    const saved = await this._applyChanges(message);
+    if (saved) this._renderCards();
+  }
+
+  _assignSelectedToActiveLayer() {
+    const layer = this._layerById(this._ensureActiveLayer());
+    const message = this._selectedIndices.length > 1
+      ? lotusT("Cartes sélectionnées ajoutées au calque « {layer} »", { layer:layer.name })
+      : lotusT("Carte ajoutée au calque « {layer} »", { layer:layer.name });
+    void this._assignSelectedToLayer(layer.id, message);
+  }
+
+  _removeSelectedFromLayer() {
+    const base = this._layerById(LOTUS_DEFAULT_LAYER_ID);
+    const message = this._selectedIndices.length > 1
+      ? lotusT("Cartes sélectionnées replacées dans « {layer} »", { layer:base.name })
+      : lotusT("Carte replacée dans « {layer} »", { layer:base.name });
+    void this._assignSelectedToLayer(base.id, message);
+  }
+
+  _openMoveCardToLayerMenu() {
+    if (!this._selectedIndices.length || this._saveInProgress || this._dirty) return;
+    const layers = this._layersConfig();
+    if (layers.length < 2) return;
+    document.querySelectorAll(".lotus-move-layer-backdrop").forEach((node) => node.remove());
+    const backdrop = document.createElement("div");
+    backdrop.className = "lotus-move-layer-backdrop";
+    const style = document.createElement("style");
+    style.textContent = `
+      .lotus-move-layer-backdrop { position:fixed; inset:0; z-index:100004; display:grid; place-items:center; padding:18px; box-sizing:border-box; background:rgba(0,0,0,.38); }
+      .lotus-move-layer-dialog { width:min(480px,94vw); max-height:min(680px,88vh); overflow:hidden; display:flex; flex-direction:column; border-radius:16px; background:var(--card-background-color,var(--ha-card-background,#fff)); color:var(--primary-text-color,#212121); box-shadow:0 20px 60px rgba(0,0,0,.34); }
+      .lotus-move-layer-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px; border-bottom:1px solid var(--divider-color,rgba(0,0,0,.12)); }
+      .lotus-move-layer-close { appearance:none; border:0; background:transparent; color:inherit; width:40px; height:40px; border-radius:50%; cursor:pointer; display:grid; place-items:center; }
+      .lotus-move-layer-list { padding:10px; overflow:auto; display:grid; gap:8px; }
+      .lotus-move-layer-item { appearance:none; width:100%; border:1px solid var(--divider-color,rgba(0,0,0,.14)); background:var(--secondary-background-color,rgba(127,127,127,.08)); color:inherit; border-radius:12px; padding:11px 12px; cursor:pointer; display:flex; align-items:center; gap:12px; text-align:left; font:inherit; }
+      .lotus-move-layer-item:hover { background:color-mix(in srgb,var(--primary-color,#03a9f4) 12%,transparent); }
+      .lotus-move-layer-item ha-icon { --mdc-icon-size:24px; }
+    `;
+    const dialog = document.createElement("div");
+    dialog.className = "lotus-move-layer-dialog";
+    const header = document.createElement("div");
+    header.className = "lotus-move-layer-header";
+    const title = document.createElement("strong");
+    title.textContent = lotusT(this._selectedIndices.length > 1 ? "Déplacer les cartes vers un calque" : "Déplacer la carte vers un calque");
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "lotus-move-layer-close";
+    close.innerHTML = '<ha-icon icon="mdi:close"></ha-icon>';
+    header.append(title, close);
+    const list = document.createElement("div");
+    list.className = "lotus-move-layer-list";
+    layers.slice().reverse().forEach((layer) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "lotus-move-layer-item";
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", "mdi:layers-outline");
+      const label = document.createElement("span");
+      label.textContent = layer.name;
+      item.append(icon, label);
+      item.addEventListener("click", async () => {
+        cleanup();
+        const message = this._selectedIndices.length > 1
+          ? lotusT("Cartes sélectionnées déplacées vers « {layer} »", { layer:layer.name })
+          : lotusT("Carte déplacée vers « {layer} »", { layer:layer.name });
+        await this._assignSelectedToLayer(layer.id, message);
+      });
+      list.appendChild(item);
+    });
+    dialog.append(header, list);
+    backdrop.append(style, dialog);
+    const cleanup = () => { document.removeEventListener("keydown", onKeyDown, true); backdrop.remove(); };
+    const onKeyDown = (event) => { if (event.key === "Escape") cleanup(); };
+    close.addEventListener("click", cleanup);
+    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) cleanup(); });
+    document.addEventListener("keydown", onKeyDown, true);
+    document.body.appendChild(backdrop);
   }
 
   _persistEditorGuidePreferences() {
@@ -1479,7 +2677,7 @@ class LotusVisualLayout extends HTMLElement {
       this._statusKind = "";
       this._updateToolbar();
 
-      const newConfig = deepClone(this._lovelace.config);
+      const newConfig = this._buildConfigWithWorkingLayouts();
       const view = newConfig?.views?.[this._index];
       if (!view) return;
       const meta = view[LOTUS_VIEW_META_KEY] && typeof view[LOTUS_VIEW_META_KEY] === "object"
@@ -1507,7 +2705,7 @@ class LotusVisualLayout extends HTMLElement {
       this._statusKind = "success";
     } catch (error) {
       this._viewScrollModeOverride = previousScroll;
-      console.error("[Lotus Visual] Impossible d’enregistrer le mode de défilement", error);
+      lotusDebug("Unable to save scrolling mode", error);
       this._statusMessage = `Échec de l’enregistrement : ${error?.message || error}`;
       this._statusKind = "error";
     } finally {
@@ -1524,7 +2722,8 @@ class LotusVisualLayout extends HTMLElement {
       this._updateToolbar();
       return;
     }
-    this._pendingNewCardTabId = this._tabsEnabled() ? this._activeTabId : null;
+    this._pendingNewCardTabId = this._tabsEnabled() ? this._ensureActiveTab() : null;
+    this._pendingNewCardLayerId = this._ensureActiveLayer();
     this._openAddCardMenu();
   }
 
@@ -1636,7 +2835,7 @@ class LotusVisualLayout extends HTMLElement {
     const close = (clearPending = true) => {
       document.removeEventListener("keydown", onKeyDown, true);
       backdrop.remove();
-      if (clearPending) this._pendingNewCardTabId = null;
+      if (clearPending) { this._pendingNewCardTabId = null; this._pendingNewCardLayerId = null; }
     };
     const onKeyDown = (event) => {
       if (event.key === "Escape") {
@@ -1780,8 +2979,16 @@ class LotusVisualLayout extends HTMLElement {
   }
 
   _storedCardTabId(index) {
-    const stored = this._cardConfig(index)?.view_layout?.[LOTUS_LAYOUT_KEY];
-    return typeof stored?.tab === "string" && stored.tab ? stored.tab : null;
+    const viewLayout = this._cardConfig(index)?.view_layout || {};
+    const legacyStored = LOTUS_LEGACY_LAYOUT_KEYS
+      .map((key) => viewLayout[key])
+      .find((value) => value && typeof value === "object") || {};
+    const currentStored = viewLayout[LOTUS_LAYOUT_KEY];
+    const stored = {
+      ...legacyStored,
+      ...(currentStored && typeof currentStored === "object" ? currentStored : {}),
+    };
+    return typeof stored.tab === "string" && stored.tab ? stored.tab : null;
   }
 
   _cardTabId(index) {
@@ -1975,7 +3182,7 @@ class LotusVisualLayout extends HTMLElement {
     const currentTabId = this._cardTabId(index);
     if (currentTabId === tabId) return;
     const previous = { ...(this._workingLayouts.get(index) || this._readStoredLayout(index)) };
-    this._workingLayouts.set(index, { ...previous, tab:tabId });
+    this._workingLayouts.set(index, { ...previous, tab:tabId, layer:LOTUS_DEFAULT_LAYER_ID });
     this._markDirty();
     const saved = await this._applyChanges(`Carte déplacée vers « ${destination.name || "onglet"} »`);
     if (!saved) {
@@ -1997,6 +3204,8 @@ class LotusVisualLayout extends HTMLElement {
     const tabs = this._tabsConfig();
     if (!tabs.enabled || !tabs.items.some((item) => item.id === tabId) || tabId === this._activeTabId) return;
     this._activeTabId = tabId;
+    this._renamingLayerId = null;
+    this._ensureActiveLayer(this._currentLayerScopeKey());
     this._sanitizeSelection();
     this._editorZoom = 100;
     this._editorZoomMode = "fit";
@@ -2034,14 +3243,16 @@ class LotusVisualLayout extends HTMLElement {
       slot.style.setProperty("--lotus-tab-underlay", underlay);
       if (neighbor) {
         slot.dataset.edgeFillSide = mode;
-        const edgeSource = mode === "start" ? neighbor : item;
+        const edgeSource = neighbor || item;
         const edgeSourceActive = edgeSource?.id === this._activeTabId;
         const edgeFg = this._tabColorCss(
           edgeSourceActive ? (edgeSource?.active_text_color || "white") : (edgeSource?.text_color || "white"),
           "var(--primary-text-color,#212121)",
         );
         slot.style.setProperty("--lotus-tab-edge-stroke", `color-mix(in srgb,${edgeFg} ${edgeSourceActive ? 35 : 18}%,transparent)`);
-        slot.style.setProperty("--lotus-tab-edge-width", edgeSourceActive ? "2" : "1");
+        const edgeWidth = edgeSourceActive ? 2 : 1;
+        slot.dataset.edgeWidth = String(edgeWidth);
+        slot.style.setProperty("--lotus-tab-edge-width", String(edgeWidth));
       }
 
       const button = document.createElement("button");
@@ -2109,7 +3320,8 @@ class LotusVisualLayout extends HTMLElement {
       const rect = slot.getBoundingClientRect();
       const radiusPct = clamp(Number(button.dataset.edgeRadius ?? 50),0,50);
       const radius = depth * radiusPct / 100;
-      const d = lotusTabEdgeBorderPath(position, slot.dataset.edgeFillSide, rect.width, rect.height, radius);
+      const edgeWidth = clamp(Number(slot.dataset.edgeWidth ?? 1), 0, 10);
+      const d = lotusTabEdgeBorderPath(position, slot.dataset.edgeFillSide, rect.width, rect.height, radius, edgeWidth);
       if (!d) {
         svg.setAttribute("hidden", "");
         return;
@@ -2183,6 +3395,15 @@ class LotusVisualLayout extends HTMLElement {
         }));
       },
     });
+  }
+
+  _toolbarGroup(...items) {
+    const group = document.createElement("span");
+    group.className = "toolbar-group";
+    for (const item of items) {
+      if (item) group.append(item);
+    }
+    return group;
   }
 
   _separator() {
@@ -2796,19 +4017,27 @@ class LotusVisualLayout extends HTMLElement {
 
   _readStoredLayout(index) {
     const viewLayout = this._cardConfig(index)?.view_layout || {};
-    const stored = viewLayout[LOTUS_LAYOUT_KEY]
-      || LOTUS_LEGACY_LAYOUT_KEYS.map((key) => viewLayout[key]).find(Boolean);
-    if (!stored) return this._defaultLayoutForIndex(index);
+    const legacyStored = LOTUS_LEGACY_LAYOUT_KEYS
+      .map((key) => viewLayout[key])
+      .find((value) => value && typeof value === "object") || {};
+    const currentStored = viewLayout[LOTUS_LAYOUT_KEY];
+    const stored = {
+      ...legacyStored,
+      ...(currentStored && typeof currentStored === "object" ? currentStored : {}),
+    };
+    if (!Object.keys(stored).length) return this._defaultLayoutForIndex(index);
     const width = clamp(Number(stored.width ?? DEFAULT_LAYOUT.width), 1, 100);
     const height = clamp(Number(stored.height ?? DEFAULT_LAYOUT.height), 1, 100);
     const tab = typeof stored.tab === "string" && stored.tab
       ? stored.tab
       : (this._tabsEnabled() ? this._defaultTabId() : null);
+    const layer = typeof stored.layer === "string" && stored.layer ? stored.layer : LOTUS_DEFAULT_LAYER_ID;
     return {
       x: roundPct(clamp(Number(stored.x ?? DEFAULT_LAYOUT.x), LOTUS_LAYOUT_POSITION_MIN, LOTUS_LAYOUT_POSITION_MAX)),
       y: roundPct(clamp(Number(stored.y ?? DEFAULT_LAYOUT.y), LOTUS_LAYOUT_POSITION_MIN, LOTUS_LAYOUT_POSITION_MAX)),
       width: roundPct(width), height: roundPct(height), locked: Boolean(stored.locked),
       z: Math.max(0, Math.round(Number(stored.z ?? index + 1) || 0)),
+      layer,
       ...(tab ? { tab } : {}),
     };
   }
@@ -2824,7 +4053,8 @@ class LotusVisualLayout extends HTMLElement {
     const x = narrow ? 3 : 2 + column * (width + gap);
     const y = 2 + row * (height + gap);
     const tab = this._tabsEnabled() ? this._defaultTabId() : null;
-    return { x:roundPct(clamp(x,0,100-width)), y:roundPct(clamp(y,0,100-height)), width, height, locked:false, z:index+1, ...(tab ? { tab } : {}) };
+    const layerScope = this._layerScopeKeyForTab(tab);
+    return { x:roundPct(clamp(x,0,100-width)), y:roundPct(clamp(y,0,100-height)), width, height, locked:false, z:index+1, layer:this._ensureActiveLayer(layerScope), ...(tab ? { tab } : {}) };
   }
 
   _captureBaselineLayouts(force = false) {
@@ -2870,15 +4100,33 @@ class LotusVisualLayout extends HTMLElement {
     if (this._isEditMode()) return true;
     if (typeof explicitVisible === "boolean") return explicitVisible;
     const target = this._runtimeVisibilityTarget(card);
-    return !Boolean(target?.hidden ?? card?.hidden);
+    // For ordinary cards Home Assistant puts the native Visibility result on
+    // the outer hui-card wrapper. Conditional cards can additionally expose a
+    // hidden inner runtime element. Either one being hidden means the Lotus
+    // wrapper must be hidden. Do not let an inner HTMLElement's default
+    // hidden=false mask a true hidden state on the outer hui-card.
+    return !Boolean(card?.hidden || target?.hidden);
   }
 
   _setWrapperRuntimeVisibility(index, wrapper, card, explicitVisible = null) {
     if (!wrapper) return;
     const visible = this._runtimeVisibilityForCard(card, explicitVisible);
     wrapper.dataset.runtimeVisible = String(visible);
-    if (visible) wrapper.removeAttribute("aria-hidden");
-    else wrapper.setAttribute("aria-hidden", "true");
+
+    // Home Assistant owns the condition engine (hui-card visibility). Lotus only
+    // mirrors the resulting state onto its absolutely positioned wrapper.
+    // Merely disabling pointer events is not enough: a card whose HA Visibility
+    // tab evaluates to false must also disappear visually from the final view.
+    // Keep hidden cards visible while editing because _runtimeVisibilityForCard()
+    // deliberately returns true in edit mode.
+    wrapper.hidden = !visible;
+    wrapper.style.setProperty("display", visible ? "" : "none", visible ? "" : "important");
+    if (visible) {
+      wrapper.style.removeProperty("display");
+      wrapper.removeAttribute("aria-hidden");
+    } else {
+      wrapper.setAttribute("aria-hidden", "true");
+    }
     this._syncModalBlocker();
   }
 
@@ -2976,8 +4224,8 @@ class LotusVisualLayout extends HTMLElement {
     active.dataset.modalActive = "true";
     this._modalActiveIndex = Number(active.dataset.index);
     this._modalBlocker.dataset.active = "true";
-    // Tabs sit above the isolated canvas. Disable them while the modal Digicode
-    // is active so no control outside the Digicode can be triggered.
+    // Tabs sit above the isolated canvas. Disable them while a modal Lotus card
+    // is active so no control outside that card can be triggered.
     if (this._tabsBar) this._tabsBar.style.pointerEvents = "none";
   }
 
@@ -3054,7 +4302,8 @@ class LotusVisualLayout extends HTMLElement {
       }
       const content = wrapper.querySelector(".card-content");
       const cardConfig = this._cardConfig(index);
-      wrapper.dataset.modalBlocker = String(digicodeModalBlockerEnabled(cardConfig));
+      wrapper.dataset.editorHidden = String(this._isEditMode() && this._hiddenLayerIds(this._layerScopeKeyForCard(index)).has(this._layerIdForCard(index)));
+      wrapper.dataset.modalBlocker = String(modalBlockerEnabled(cardConfig));
 
       // The saved representation remains native picture-elements for YAML and
       // interoperability. Inside a Lotus Visual view, however, render a Lotus
@@ -3068,16 +4317,47 @@ class LotusVisualLayout extends HTMLElement {
         if (!runtime) {
           runtime = document.createElement("lotus-visual-stack");
           runtime.dataset.lotusRuntime = "true";
-          content.replaceChildren(runtime);
         }
         runtime.setConfig(cardConfig);
         runtime.hass = this._hass;
         runtime.preview = this._isEditMode();
-        runtime.hidden = false;
-        runtime.style.removeProperty("display");
-        runtime.removeAttribute("aria-hidden");
-        this._unbindCardRuntimeVisibility(wrapper);
-        this._setWrapperRuntimeVisibility(index, wrapper, null, true);
+
+        // A saved Lotus Stack is a native picture-elements card carrying
+        // lotus_visual_stack metadata.  We replace its visual renderer with the
+        // dedicated responsive Stack renderer, but Home Assistant's native
+        // `visibility:` conditions still belong to the outer hui-card wrapper.
+        // Keep that hui-card connected as an invisible probe whenever native
+        // visibility is configured; otherwise the dedicated renderer would
+        // bypass HA's condition engine and remain visible unconditionally.
+        const hasNativeVisibility = Array.isArray(cardConfig?.visibility)
+          && cardConfig.visibility.length > 0;
+        if (hasNativeVisibility && card) {
+          let probe = content.querySelector('.condition-probe');
+          if (!probe) {
+            probe = document.createElement("div");
+            probe.className = "condition-probe";
+          }
+          if (runtime.parentElement !== content || probe.parentElement !== content) {
+            content.replaceChildren(runtime, probe);
+          }
+          if (card.parentElement !== probe) probe.replaceChildren(card);
+          try { card.hass = this._hass; } catch (_error) { /* defensive */ }
+          try { card.preview = this._isEditMode(); } catch (_error) { /* defensive */ }
+          this._bindCardRuntimeVisibility(index, wrapper, card, (visible) => {
+            runtime.hidden = !visible;
+            runtime.style.setProperty("display", visible ? "block" : "none", "important");
+            runtime.setAttribute("aria-hidden", String(!visible));
+          });
+        } else {
+          if (runtime.parentElement !== content || content.children.length !== 1) {
+            content.replaceChildren(runtime);
+          }
+          runtime.hidden = false;
+          runtime.style.removeProperty("display");
+          runtime.removeAttribute("aria-hidden");
+          this._unbindCardRuntimeVisibility(wrapper);
+          this._setWrapperRuntimeVisibility(index, wrapper, null, true);
+        }
       } else if (nestedConditionalStack && card) {
         // Home Assistant remains the condition engine. Its native conditional
         // card is kept connected as an invisible probe; Lotus only mirrors the
@@ -3162,8 +4442,8 @@ class LotusVisualLayout extends HTMLElement {
     target.style.top = `${layout.y}%`;
     target.style.width = `${layout.width}%`;
     target.style.height = `${layout.height}%`;
-    target.style.zIndex = String(layout.z ?? index + 1);
-    target.dataset.locked = String(Boolean(layout.locked));
+    target.style.zIndex = String(this._effectiveLayerZ(index, layout));
+    target.dataset.locked = String(Boolean(layout.locked || this._isLayerLocked(this._layerIdForCard(index))));
     this._applySelectionDataset(target, index);
     target.dataset.ratioLocked = String(Boolean(ratio));
   }
@@ -3188,6 +4468,7 @@ class LotusVisualLayout extends HTMLElement {
     this._selectedIndices = this._selectedIndices.filter((index) => {
       if (!Number.isInteger(index) || index < 0 || index >= this._cards.length || seen.has(index)) return false;
       if (!this._isCardVisibleInActiveTab(index)) return false;
+      if (this._isEditMode() && this._hiddenLayerIds(this._layerScopeKeyForCard(index)).has(this._layerIdForCard(index))) return false;
       seen.add(index);
       return true;
     });
@@ -3202,6 +4483,7 @@ class LotusVisualLayout extends HTMLElement {
 
   _selectCard(index, { toggle = false } = {}) {
     if (!Number.isInteger(index) || index < 0 || index >= this._cards.length || !this._isCardVisibleInActiveTab(index)) return;
+    if (this._isEditMode() && this._hiddenLayerIds(this._layerScopeKeyForCard(index)).has(this._layerIdForCard(index))) return;
     if (toggle) {
       const position = this._selectedIndices.indexOf(index);
       if (position >= 0) this._selectedIndices.splice(position, 1);
@@ -3235,7 +4517,7 @@ class LotusVisualLayout extends HTMLElement {
     this._selectCard(index);
     if (this._activeTabLayoutMode() === "grid") return;
     const layout = { ...this._workingLayouts.get(index) };
-    if (layout.locked) return;
+    if (layout.locked || this._isLayerLocked(this._layerIdForCard(index))) return;
     const rect = this._canvas.getBoundingClientRect();
     const canvasWidth = Math.max(rect.width,1);
     const canvasHeight = Math.max(rect.height,1);
@@ -3265,7 +4547,7 @@ class LotusVisualLayout extends HTMLElement {
     if (this._activeTabLayoutMode() === "grid") return;
 
     const layout = { ...this._workingLayouts.get(index) };
-    if (layout.locked) return;
+    if (layout.locked || this._isLayerLocked(this._layerIdForCard(index))) return;
 
     const rect = this._canvas.getBoundingClientRect();
     const canvasWidth = Math.max(rect.width,1);
@@ -3507,7 +4789,7 @@ class LotusVisualLayout extends HTMLElement {
   _toggleSelectedLock() {
     if (this._selectedIndex === null || this._saveInProgress) return;
     const current = this._workingLayouts.get(this._selectedIndex);
-    if (!current) return;
+    if (!current || this._isLayerLocked(this._layerIdForCard(this._selectedIndex))) return;
     const locked = !current.locked;
     this._workingLayouts.set(this._selectedIndex, { ...current, locked });
     this._markDirty();
@@ -3518,7 +4800,7 @@ class LotusVisualLayout extends HTMLElement {
   _changeZ(delta) {
     if (this._selectedIndex === null || this._saveInProgress) return;
     const current = this._workingLayouts.get(this._selectedIndex);
-    if (!current) return;
+    if (!current || this._isLayerLocked(this._layerIdForCard(this._selectedIndex))) return;
     this._workingLayouts.set(this._selectedIndex, { ...current, z:Math.max(0,(current.z || 0)+delta) });
     this._markDirty();
     this._applyLayoutToWrapper(this._selectedIndex);
@@ -3527,6 +4809,9 @@ class LotusVisualLayout extends HTMLElement {
 
   _editSelectedCard() {
     if (this._selectedIndex === null) return;
+    // Native card editing can cause Home Assistant to rebuild the view. Keep a
+    // checkpoint of the editor layer state before handing control to HA.
+    this._persistLayerEditorState();
     // Home Assistant owns the card dialog, GUI/YAML switching and save/cancel.
     // A narrow bridge in Lotus Stack supplies the Stack GUI editor when the
     // saved card is a native picture-elements card carrying Lotus metadata.
@@ -3561,7 +4846,7 @@ class LotusVisualLayout extends HTMLElement {
       this._statusKind = "";
       this._updateToolbar();
 
-      const newConfig = deepClone(this._lovelace.config);
+      const newConfig = this._buildConfigWithWorkingLayouts();
       const view = newConfig?.views?.[this._index];
       const source = view?.cards?.[this._selectedIndex];
       if (!view || !source) return;
@@ -3593,7 +4878,7 @@ class LotusVisualLayout extends HTMLElement {
         fireEvent(this, "ll-edit-card", { path:[this._index, this._selectedIndex] });
       }));
     } catch (error) {
-      console.error("[Lotus Visual] conditional wrapper failed", error);
+      lotusDebug("Conditional wrapper failed", error);
       this._statusMessage = `Échec : ${error?.message || error}`;
       this._statusKind = "error";
     } finally {
@@ -3627,7 +4912,7 @@ class LotusVisualLayout extends HTMLElement {
       this._statusKind = "";
       this._updateToolbar();
 
-      const newConfig = deepClone(this._lovelace.config);
+      const newConfig = this._buildConfigWithWorkingLayouts();
       const view = newConfig?.views?.[this._index];
       const source = view?.cards?.[this._selectedIndex];
       if (!view || !isNativeConditionalConfig(source)) return;
@@ -3640,7 +4925,7 @@ class LotusVisualLayout extends HTMLElement {
       this._baselineLayouts.set(this._selectedIndex, { ...this._readStoredLayout(this._selectedIndex) });
       this._workingLayouts.set(this._selectedIndex, { ...this._readStoredLayout(this._selectedIndex) });
     } catch (error) {
-      console.error("[Lotus Visual] conditional unwrap failed", error);
+      lotusDebug("Conditional unwrap failed", error);
       this._statusMessage = `Échec : ${error?.message || error}`;
       this._statusKind = "error";
     } finally {
@@ -3884,6 +5169,9 @@ class LotusVisualLayout extends HTMLElement {
     }
     const selected = [...this._selectedIndices];
     if (!selected.length) return;
+    // Deleting a card may replace the Lovelace view element. Persist all layer
+    // editor state first so the rebuilt editor resumes exactly where it was.
+    this._persistLayerEditorState();
 
     if (selected.length === 1) {
       fireEvent(this,"ll-delete-card",{ path:[this._index, selected[0]], silent:false });
@@ -3896,12 +5184,12 @@ class LotusVisualLayout extends HTMLElement {
       return;
     }
 
-    const confirmed = window.confirm(lotusT(`Supprimer les ${selected.length} cartes sélectionnées ?`));
+    const confirmed = window.confirm(lotusT("Supprimer {count} cartes sélectionnées ?", { count:selected.length }));
     if (!confirmed) return;
 
     try {
       this._saveInProgress = true;
-      this._statusMessage = `Suppression de ${selected.length} cartes…`;
+      this._statusMessage = lotusT("Suppression de {count} cartes…", { count:selected.length });
       this._statusKind = "";
       this._updateToolbar();
 
@@ -3914,10 +5202,10 @@ class LotusVisualLayout extends HTMLElement {
 
       this._dirty = false;
       this._clearSelection();
-      this._statusMessage = `${selected.length} cartes supprimées`;
+      this._statusMessage = lotusT("{count} cartes supprimées", { count:selected.length });
       this._statusKind = "success";
     } catch (error) {
-      console.error("[Lotus Visual] batch delete failed", error);
+      lotusDebug("Batch delete failed", error);
       this._statusMessage = `Échec de la suppression : ${error?.message || error}`;
       this._statusKind = "error";
     } finally {
@@ -3952,6 +5240,7 @@ class LotusVisualLayout extends HTMLElement {
     };
     if (layout.locked) result.locked = true;
     if (typeof layout.tab === "string" && layout.tab) result.tab = layout.tab;
+    if (typeof layout.layer === "string" && layout.layer && layout.layer !== LOTUS_DEFAULT_LAYER_ID) result.layer = layout.layer;
     const defaultZ = index + 1;
     const z = Math.max(0, Math.round(Number(layout.z) || 0));
     if (z !== defaultZ) result.z = z;
@@ -3970,6 +5259,117 @@ class LotusVisualLayout extends HTMLElement {
     nextViewLayout[LOTUS_LAYOUT_KEY] = this._serializedLayout(normalizedLayout, index);
     nextCard.view_layout = nextViewLayout;
     return nextCard;
+  }
+
+  _copySelectedCard() {
+    if (this._dirty || this._saveInProgress) {
+      this._statusMessage = "Attendez la fin de l’enregistrement automatique.";
+      this._statusKind = "error";
+      this._updateToolbar();
+      return;
+    }
+    if (this._selectedIndex === null || this._selectedIndices.length !== 1) return;
+
+    const workingConfig = this._buildConfigWithWorkingLayouts();
+    const view = workingConfig?.views?.[this._index];
+    const card = view?.cards?.[this._selectedIndex];
+    if (!card) {
+      this._statusMessage = "Impossible de copier la carte.";
+      this._statusKind = "error";
+      this._updateToolbar();
+      return;
+    }
+
+    const layout = this._workingLayouts.get(this._selectedIndex) || this._readStoredLayout(this._selectedIndex);
+    const sourceView = this._currentViewConfig();
+    const stored = saveLotusCardClipboard({
+      schema:1,
+      card:deepClone(card),
+      layout:deepClone(layout),
+      source:{
+        title:typeof sourceView?.title === "string" ? sourceView.title : "",
+        path:typeof sourceView?.path === "string" ? sourceView.path : "",
+      },
+      copiedAt:Date.now(),
+    });
+
+    this._statusMessage = stored ? "Carte copiée" : "Impossible de copier la carte.";
+    this._statusKind = stored ? "success" : "error";
+    this._updateToolbar();
+  }
+
+  async _pasteCopiedCard() {
+    if (this._dirty || this._saveInProgress) {
+      this._statusMessage = "Attendez la fin de l’enregistrement automatique.";
+      this._statusKind = "error";
+      this._updateToolbar();
+      return;
+    }
+    if (!this._lovelace?.config || typeof this._lovelace?.saveConfig !== "function") return;
+
+    const clipboard = loadLotusCardClipboard();
+    if (!clipboard) {
+      this._statusMessage = "Aucune carte copiée à coller.";
+      this._statusKind = "error";
+      this._updateToolbar();
+      return;
+    }
+
+    const scopeKey = this._currentLayerScopeKey();
+    const targetLayerId = this._ensureActiveLayer(scopeKey);
+    if (this._isLayerLocked(targetLayerId, scopeKey)) return;
+
+    const newConfig = this._buildConfigWithWorkingLayouts();
+    const view = newConfig?.views?.[this._index];
+    if (!view || !Array.isArray(view.cards)) return;
+
+    const insertedIndex = view.cards.length;
+    const targetTabId = this._tabsEnabled() ? this._ensureActiveTab() : null;
+    const sourceLayout = clipboard.layout || {};
+    const fallbackLayout = this._defaultLayoutForIndex(insertedIndex);
+    const copyLayout = {
+      ...fallbackLayout,
+      ...sourceLayout,
+      x:roundPct(clamp(Number(sourceLayout.x ?? fallbackLayout.x), LOTUS_LAYOUT_POSITION_MIN, LOTUS_LAYOUT_POSITION_MAX)),
+      y:roundPct(clamp(Number(sourceLayout.y ?? fallbackLayout.y), LOTUS_LAYOUT_POSITION_MIN, LOTUS_LAYOUT_POSITION_MAX)),
+      width:roundPct(clamp(Number(sourceLayout.width ?? fallbackLayout.width), 1, 100)),
+      height:roundPct(clamp(Number(sourceLayout.height ?? fallbackLayout.height), 1, 100)),
+      z:insertedIndex + 1,
+      layer:targetLayerId,
+      ...(targetTabId ? { tab:targetTabId } : {}),
+    };
+    if (!targetTabId) delete copyLayout.tab;
+
+    const cleanCopy = this._withCleanLotusLayout(deepClone(clipboard.card), copyLayout, insertedIndex);
+    view.cards.push(cleanCopy);
+
+    // The cards setter can be called by Home Assistant while saveConfig is
+    // propagating. Keep the destination context explicit so this refresh can
+    // never demote the pasted card to layer-1 or to another tab.
+    this._pendingNewCardLayerId = targetLayerId;
+    this._pendingNewCardTabId = targetTabId;
+
+    try {
+      this._saveInProgress = true;
+      this._statusMessage = "Enregistrement automatique…";
+      this._statusKind = "";
+      this._updateToolbar();
+      await this._lovelace.saveConfig(newConfig);
+      this._dirty = false;
+      this._selectedIndex = insertedIndex;
+      this._selectedIndices = [insertedIndex];
+      this._statusMessage = "Carte collée";
+      this._statusKind = "success";
+    } catch (error) {
+      lotusDebug("Paste card failed", error);
+      this._pendingNewCardLayerId = null;
+      this._pendingNewCardTabId = null;
+      this._statusMessage = "Impossible de coller la carte copiée.";
+      this._statusKind = "error";
+    } finally {
+      this._saveInProgress = false;
+      this._updateToolbar();
+    }
   }
 
   async _duplicateSelected() {
@@ -4029,6 +5429,33 @@ class LotusVisualLayout extends HTMLElement {
     const view = newConfig?.views?.[this._index];
     if (!view || !Array.isArray(view.cards)) return newConfig;
 
+    const meta = view[LOTUS_VIEW_META_KEY] && typeof view[LOTUS_VIEW_META_KEY] === "object"
+      ? { ...view[LOTUS_VIEW_META_KEY] }
+      : {};
+    const layerStorage = this._layerStorageForSave(meta[LOTUS_VIEW_LAYERS_KEY]);
+    if (this._tabsEnabled()) {
+      // Card geometry/layer autosaves must never flatten the per-tab layer
+      // catalogue. Materialize every tab scope so a card assigned to layer-2
+      // remains in layer-2 after navigation, reload or an addon upgrade.
+      for (const tab of this._tabsConfig().items) {
+        layerStorage.tabs[tab.id] = this._serializeLayers(
+          this._layersConfig(this._currentViewConfig(), tab.id),
+        );
+      }
+    } else {
+      layerStorage.global = this._serializeLayers(
+        this._layersConfig(this._currentViewConfig(), LOTUS_GLOBAL_LAYER_SCOPE),
+      );
+    }
+    // Include optimistic layer edits that may not yet have propagated back
+    // into Home Assistant's lovelace.config object.
+    for (const [scopeKey, layers] of this._layerConfigOverrides.entries()) {
+      if (scopeKey === LOTUS_GLOBAL_LAYER_SCOPE || !this._tabsEnabled()) layerStorage.global = this._serializeLayers(layers);
+      else layerStorage.tabs[scopeKey] = this._serializeLayers(layers);
+    }
+    meta[LOTUS_VIEW_LAYERS_KEY] = layerStorage;
+    view[LOTUS_VIEW_META_KEY] = meta;
+
     view.cards = view.cards.map((cardConfig,index) => {
       const layout = this._workingLayouts.get(index);
       if (!layout) return cardConfig;
@@ -4058,7 +5485,7 @@ class LotusVisualLayout extends HTMLElement {
       this._statusKind = "success";
       return true;
     } catch (error) {
-      console.error("[Lotus Visual] save failed",error);
+      lotusDebug("Save failed", error);
       this._statusMessage = `Échec de l’enregistrement automatique : ${error?.message || error}`;
       this._statusKind = "error";
       return false;
@@ -4095,33 +5522,50 @@ class LotusVisualLayout extends HTMLElement {
     const canDistribute = selectedCount >= 3;
     const layout = selected ? this._workingLayouts.get(this._selectedIndex) : null;
     const viewTitle = this._currentViewConfig()?.title || lotusT("Vue Lotus");
+    this._toolbar.setAttribute("aria-label", lotusT("Outils de l’éditeur Lotus Visual"));
+    this._sideToolbar?.setAttribute("aria-label", lotusT("Calques et outils de sélection"));
+    this._sideResizeHandle?.setAttribute("aria-label", lotusT("Redimensionner la barre latérale"));
+    if (this._layersHeading) {
+      const activeTab = this._activeTab();
+      this._layersHeading.textContent = activeTab?.name
+        ? `${lotusT("Calques")} · ${activeTab.name}`
+        : lotusT("Calques");
+    }
+    if (this._selectionHeading) this._selectionHeading.textContent = lotusT("Sélection");
+    if (this._cardLayerHeading) this._cardLayerHeading.textContent = lotusT("Calque");
+    if (this._editHeading) this._editHeading.textContent = lotusT("Édition");
+    if (this._positionHeading) this._positionHeading.textContent = lotusT("Position");
 
-    if (multi) {
-      this._selectedName.textContent = lotusT(`${selectedCount} cartes sélectionnées`);
+    // La barre horizontale décrit uniquement l’éditeur / la vue. Les détails
+    // de sélection sont réservés à la barre verticale.
+    this._selectedName.textContent = viewTitle;
+    if (this._sideCardSection) this._sideCardSection.hidden = !selected;
+    if (selected && this._sideSelectedName) {
+      this._sideSelectedName.textContent = multi
+        ? lotusT("{count} cartes sélectionnées", { count:selectedCount })
+        : this._selectedCardName();
+    }
+    if (selected) {
       const referenceName = this._selectedCardName(this._selectedIndex);
-      const referenceLayout = layout ? this._effectiveLayout(this._selectedIndex, layout) : null;
-      this._selectedMetrics.textContent = referenceLayout
-        ? `${lotusT("Référence")} : ${referenceName} · X ${referenceLayout.x.toFixed(2)} % · Y ${referenceLayout.y.toFixed(2)} % · ${lotusT("L")} ${referenceLayout.width.toFixed(2)} % · ${lotusT("H")} ${referenceLayout.height.toFixed(2)} %`
-        : `${lotusT("Référence")} : ${referenceName}`;
-    } else {
-      this._selectedName.textContent = selected ? this._selectedCardName() : viewTitle;
-      const displayedLayout = selected && layout
-        ? this._effectiveLayout(this._selectedIndex, layout)
-        : layout;
+      const displayedLayout = layout ? this._effectiveLayout(this._selectedIndex, layout) : null;
       const gridModeForMetrics = this._activeTabLayoutMode() === "grid";
-      this._selectedMetrics.textContent = displayedLayout
-        ? (gridModeForMetrics
-            ? `${lotusT("Grille responsive")} · ${lotusT("position automatique")}${this._stackRatio(this._selectedIndex) ? ` · ${lotusT("ratio conservé")}` : ""}`
-            : `X ${displayedLayout.x.toFixed(2)} % · Y ${displayedLayout.y.toFixed(2)} % · ${lotusT("L")} ${displayedLayout.width.toFixed(2)} % · ${lotusT("H")} ${displayedLayout.height.toFixed(2)} %${this._stackRatio(this._selectedIndex) ? ` · ${lotusT("ratio verrouillé")}` : ""}`)
-        : (() => {
-            const visible = this._tabsEnabled()
-              ? this._cards.reduce((count,_card,index) => count + (this._isCardVisibleInActiveTab(index) ? 1 : 0), 0)
-              : this._cards.length;
-            const tab = this._activeTab();
-            return this._tabsEnabled()
-              ? `${visible} ${lotusT(visible > 1 ? "cartes" : "carte")} · ${tab?.name || lotusT("onglet actif")}`
-              : `${visible} ${lotusT(visible > 1 ? "cartes" : "carte")} · ${lotusT("sélectionnez une carte pour l’éditer")}`;
-          })();
+      this._selectedMetrics.textContent = multi
+        ? (displayedLayout
+            ? `${lotusT("Référence")} : ${referenceName} · X ${displayedLayout.x.toFixed(2)} % · Y ${displayedLayout.y.toFixed(2)} % · ${lotusT("L")} ${displayedLayout.width.toFixed(2)} % · ${lotusT("H")} ${displayedLayout.height.toFixed(2)} %`
+            : `${lotusT("Référence")} : ${referenceName}`)
+        : (displayedLayout
+            ? (gridModeForMetrics
+                ? `${lotusT("Grille responsive")} · ${lotusT("position automatique")}${this._stackRatio(this._selectedIndex) ? ` · ${lotusT("ratio conservé")}` : ""}`
+                : `X ${displayedLayout.x.toFixed(2)} % · Y ${displayedLayout.y.toFixed(2)} % · ${lotusT("L")} ${displayedLayout.width.toFixed(2)} % · ${lotusT("H")} ${displayedLayout.height.toFixed(2)} %${this._stackRatio(this._selectedIndex) ? ` · ${lotusT("ratio verrouillé")}` : ""}`)
+            : "");
+      const selectedLayers = [...new Set(this._selectedIndices.map((index) => this._layerIdForCard(index)))];
+      const layerLabel = selectedLayers.length === 1
+        ? this._layerById(selectedLayers[0])?.name
+        : `${selectedLayers.length} ${lotusT("calques")}`;
+      if (this._selectedCardLayer) this._selectedCardLayer.textContent = `${lotusT("Calque")} : ${layerLabel}`;
+    } else {
+      if (this._selectedMetrics) this._selectedMetrics.textContent = "";
+      if (this._selectedCardLayer) this._selectedCardLayer.textContent = "";
     }
 
     this._status.textContent = lotusT(this._statusMessage);
@@ -4174,33 +5618,80 @@ class LotusVisualLayout extends HTMLElement {
     this._buttons.multiSelect.setAttribute("aria-label", this._buttons.multiSelect.title);
     this._buttons.nativeYaml.disabled = this._dirty || this._saveInProgress;
 
+    const clipboard = loadLotusCardClipboard();
+    this._buttons.pasteCard.hidden = !clipboard;
+
+    const layers = this._layersConfig();
+    const activeLayerId = this._ensureActiveLayer();
+    const activeLayerIndex = layers.findIndex((layer) => layer.id === activeLayerId);
+    const activeLayerEmpty = this._layerCardIndices(activeLayerId).length === 0;
+    this._buttons.layerAdd.disabled = this._dirty || this._saveInProgress;
+    this._buttons.layerDelete.disabled = this._dirty || this._saveInProgress || layers.length <= 1 || activeLayerId === LOTUS_DEFAULT_LAYER_ID || !activeLayerEmpty;
+    this._buttons.layerBackward.disabled = this._dirty || this._saveInProgress || activeLayerIndex <= 0;
+    this._buttons.layerForward.disabled = this._dirty || this._saveInProgress || activeLayerIndex < 0 || activeLayerIndex >= layers.length - 1;
+    this._buttons.pasteCard.disabled = !clipboard || this._dirty || this._saveInProgress || this._isLayerLocked(activeLayerId);
+    this._buttons.pasteCard.title = lotusT("Coller la carte copiée");
+    this._buttons.pasteCard.setAttribute("aria-label", this._buttons.pasteCard.title);
+
     // La zone d'actions contextuelles n'existe visuellement que lorsqu'au
     // moins une carte est sélectionnée.
     this._selectedActions.hidden = !selected;
 
-    // Les commandes unitaires ne sont présentes que pour une sélection simple.
-    // Aucune carte sélectionnée : elles sont masquées, pas seulement désactivées.
-    this._singleSeparator.hidden = !selected || multi;
+    const selectedLayerId = selected ? this._layerIdForCard(this._selectedIndex) : null;
+    const activeLayerLocked = selectedLayerId ? this._isLayerLocked(selectedLayerId) : false;
+    const anySelectedEditorLocked = selected && this._selectedIndices.some((index) => this._isCardEditorLocked(index));
+    const allInActiveLayer = selected && this._selectedIndices.every((index) => this._layerIdForCard(index) === activeLayerId);
+    const allInBaseLayer = selected && this._selectedIndices.every((index) => this._layerIdForCard(index) === LOTUS_DEFAULT_LAYER_ID);
+    this._buttons.cardAddToActiveLayer.disabled = !selected || this._saveInProgress || this._dirty || anySelectedEditorLocked || allInActiveLayer;
+    this._buttons.cardRemoveFromLayer.disabled = !selected || this._saveInProgress || this._dirty || anySelectedEditorLocked || allInBaseLayer;
+    this._buttons.cardMoveLayer.disabled = !selected || this._saveInProgress || this._dirty || anySelectedEditorLocked || layers.length < 2;
+
+    const cardLayerTitles = multi
+      ? {
+          add:"Ajouter les cartes sélectionnées au calque de travail",
+          remove:"Retirer les cartes sélectionnées de leur calque et les replacer dans le Calque 1",
+          move:"Déplacer les cartes sélectionnées vers un autre calque",
+        }
+      : {
+          add:"Ajouter la carte au calque de travail",
+          remove:"Retirer la carte de son calque et la replacer dans le Calque 1",
+          move:"Déplacer la carte vers un autre calque",
+        };
+    this._buttons.cardAddToActiveLayer.title = lotusT(cardLayerTitles.add);
+    this._buttons.cardRemoveFromLayer.title = lotusT(cardLayerTitles.remove);
+    this._buttons.cardMoveLayer.title = lotusT(cardLayerTitles.move);
+    for (const button of [this._buttons.cardAddToActiveLayer, this._buttons.cardRemoveFromLayer, this._buttons.cardMoveLayer]) {
+      button.setAttribute("aria-label", button.title);
+    }
+
+    if (this._editActionGroup) this._editActionGroup.hidden = !selected;
+    if (this._positionActionGroup) this._positionActionGroup.hidden = !selected;
+    if (this._cardLayerActionGroup) this._cardLayerActionGroup.hidden = !selected;
+
+    // Les outils s'organisent toujours dans les mêmes sections. Leur visibilité
+    // s'adapte simplement à une sélection simple ou multiple.
     this._buttons.edit.hidden = !selected || multi;
     this._buttons.lock.hidden = !selected || multi;
     this._buttons.duplicate.hidden = !selected || multi;
-    this._buttons.backward.hidden = !selected || multi;
-    this._buttons.forward.hidden = !selected || multi;
+    this._buttons.copyCard.hidden = !selected || multi;
     this._buttons.centerOnImageHorizontal.hidden = !selected || multi;
     this._buttons.centerOnImageVertical.hidden = !selected || multi;
 
-    this._buttons.edit.disabled = !selected || this._saveInProgress;
-    this._buttons.lock.disabled = !selected || this._saveInProgress || gridMode;
-    this._buttons.duplicate.disabled = !selected || this._saveInProgress;
+    this._buttons.edit.disabled = !selected || this._saveInProgress || activeLayerLocked;
+    this._buttons.lock.disabled = !selected || this._saveInProgress || gridMode || activeLayerLocked;
+    this._buttons.duplicate.disabled = !selected || this._saveInProgress || activeLayerLocked;
+    // Copy is read-only: a locked card/layer may still be copied to another
+    // Lotus Visual view, but never while an autosave is in flight.
+    this._buttons.copyCard.disabled = !selected || multi || this._saveInProgress || this._dirty;
+    this._buttons.copyCard.title = lotusT("Copier la carte");
+    this._buttons.copyCard.setAttribute("aria-label", this._buttons.copyCard.title);
 
     const tabs = this._tabsConfig();
     const canMoveToAnotherTab = Boolean(selected && !multi && tabs.enabled && tabs.items.length > 1);
     this._buttons.moveTab.hidden = !canMoveToAnotherTab;
-    this._buttons.moveTab.disabled = !canMoveToAnotherTab || this._saveInProgress || this._dirty;
+    this._buttons.moveTab.disabled = !canMoveToAnotherTab || this._saveInProgress || this._dirty || activeLayerLocked;
 
-    this._buttons.forward.disabled = !selected || this._saveInProgress || gridMode;
-    this._buttons.backward.disabled = !selected || this._saveInProgress || gridMode;
-    const singlePositionDisabled = !selected || multi || this._saveInProgress || this._dirty || gridMode || Boolean(layout?.locked);
+    const singlePositionDisabled = !selected || multi || this._saveInProgress || this._dirty || gridMode || Boolean(layout?.locked) || activeLayerLocked;
     this._buttons.centerOnImageHorizontal.disabled = singlePositionDisabled;
     this._buttons.centerOnImageVertical.disabled = singlePositionDisabled;
 
@@ -4213,10 +5704,9 @@ class LotusVisualLayout extends HTMLElement {
       this._buttons.alignBottom,
       this._buttons.sameSize,
     ];
-    this._batchSeparator.hidden = !multi;
     for (const button of batchButtons) {
       button.hidden = !multi;
-      button.disabled = !multi || this._saveInProgress || this._dirty || gridMode;
+      button.disabled = !multi || this._saveInProgress || this._dirty || gridMode || this._selectedIndices.some((index) => this._isCardEditorLocked(index));
     }
 
     // Les outils de répartition n'ont de sens qu'à partir de trois cartes.
@@ -4225,17 +5715,18 @@ class LotusVisualLayout extends HTMLElement {
       this._buttons.distributeHorizontal,
       this._buttons.distributeVertical,
     ];
-    this._distributionSeparator.hidden = !canDistribute;
     for (const button of distributionButtons) {
       button.hidden = !canDistribute;
-      button.disabled = !canDistribute || this._saveInProgress || this._dirty || gridMode;
+      button.disabled = !canDistribute || this._saveInProgress || this._dirty || gridMode || this._selectedIndices.some((index) => this._isCardEditorLocked(index));
     }
 
-    // Supprimer est commun aux sélections simple et multiple, mais n'a rien à
-    // faire dans la barre contextuelle lorsqu'aucune carte n'est sélectionnée.
+    // Supprimer est placé dans l’en-tête de sélection, à côté du nom et des
+    // informations de position/taille, pour rester immédiatement identifiable.
     this._buttons.delete.hidden = !selected;
-    this._buttons.delete.disabled = !selected || this._saveInProgress;
-    this._buttons.delete.title = lotusT(multi ? `Supprimer les ${selectedCount} cartes sélectionnées` : "Supprimer la carte");
+    this._buttons.delete.disabled = !selected || this._saveInProgress || anySelectedEditorLocked;
+    this._buttons.delete.title = multi
+      ? lotusT("Supprimer {count} cartes sélectionnées", { count:selectedCount })
+      : lotusT("Supprimer la carte");
     this._buttons.delete.setAttribute("aria-label", this._buttons.delete.title);
 
     this._buttons.lock.title = lotusT(layout?.locked ? "Déverrouiller" : "Verrouiller");
@@ -4244,6 +5735,7 @@ class LotusVisualLayout extends HTMLElement {
       "icon",
       layout?.locked ? "mdi:lock" : "mdi:lock-open-variant-outline",
     );
+    this._renderLayersPanel();
   }
 
   _syncCanvasHeight() {
@@ -4274,7 +5766,3 @@ class LotusVisualLayout extends HTMLElement {
 }
 
 if (!customElements.get("lotus-visual-layout")) customElements.define("lotus-visual-layout",LotusVisualLayout);
-
-console.info(`%c LOTUS VISUAL LAYOUT %c v${LOTUS_VISUAL_VERSION} `,
-  "color:white;background:#3949ab;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px;",
-  "color:#3949ab;background:#e8eaf6;font-weight:700;padding:2px 6px;border-radius:0 4px 4px 0;");

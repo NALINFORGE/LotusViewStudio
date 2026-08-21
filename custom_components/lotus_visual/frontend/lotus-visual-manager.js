@@ -4,7 +4,7 @@ import {
   lotusSlugify,
   lotusThemeCss,
   makeIconButton,
-} from "./lotus-core.js?v=0.9.6";
+} from "./lotus-core.js?v=0.10.9";
 import {
   LOTUS_LANGUAGES,
   lotusGetAutomaticLanguage,
@@ -13,7 +13,7 @@ import {
   lotusSetHass,
   lotusSetLanguagePreference,
   lotusT,
-} from "./lotus-i18n.js?v=0.9.6";
+} from "./lotus-i18n.js?v=0.10.9";
 
 const LOTUS_BRAND_ICON_URL = `/lotus_visual_brand/icon.png?v=${LOTUS_VISUAL_VERSION}`;
 const DEFAULT_VIEW_ICON = "mdi:view-dashboard-outline";

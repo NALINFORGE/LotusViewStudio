@@ -1,5 +1,5 @@
 /*
- * Lotus Visual edit-dialog bridge — v0.9.6
+ * Lotus Visual edit-dialog bridge — v0.10.9
  *
  * Home Assistant's native hui-dialog-edit-card owns two columns on desktop:
  *   - .element-editor  (ha-scrollbar)
@@ -25,7 +25,7 @@
  * frontend. Non-Lotus cards are not changed.
  */
 
-import { lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.9.6";
+import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.10.9";
 
 const PATCHED = Symbol.for("lotusVisual.editDialogBridge.v0837");
 const CAPTURE_INSTALLED = Symbol.for("lotusVisual.editDialogCapture.v0837");
@@ -129,8 +129,15 @@ function ensureDigicodeValidityListener(dialog) {
   if (!dialog || dialog[DIGICODE_VALIDITY_LISTENER]) return;
   const listener = (event) => {
     if (event.type !== DIGICODE_VALIDITY_EVENT) return;
-    dialog.requestUpdate?.();
-    scheduleDialogLayout(dialog, 4);
+    // The custom editor may have emitted config-changed immediately before
+    // this validity notification. Let Home Assistant finish propagating that
+    // config through hui-card-element-editor -> hui-dialog-edit-card before we
+    // ask the dialog to render again; otherwise the dialog can re-inject its
+    // previous card config into the Digicode editor.
+    requestAnimationFrame(() => {
+      dialog.requestUpdate?.();
+      scheduleDialogLayout(dialog, 4);
+    });
   };
   dialog.addEventListener(DIGICODE_VALIDITY_EVENT, listener, true);
   Object.defineProperty(dialog, DIGICODE_VALIDITY_LISTENER, {
@@ -471,7 +478,7 @@ async function removeConditionalFromDialog(dialog, button) {
     dialog._discardDirtyStateChanges?.();
     dialog.closeDialog?.();
   } catch (error) {
-    console.error("[Lotus Visual] Impossible de retirer le mode conditionnel", error);
+    lotusDebug("Unable to remove conditional mode", error);
     button.disabled = false;
     button.loading = false;
   }
@@ -927,7 +934,7 @@ function installBridge() {
     .catch(() => {});
 
   window.LotusVisual = Object.assign(window.LotusVisual || {}, {
-    editDialogBridge: "0.9.6",
+    editDialogBridge: "0.10.9",
     editDialogMode: "visual-preview-yaml-code-only",
   });
 }

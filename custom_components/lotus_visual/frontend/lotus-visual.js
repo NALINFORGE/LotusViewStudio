@@ -1,7 +1,7 @@
 // Bootstrap version is intentionally local: the first import must itself be
 // cache-busted. A static import of lotus-core.js could otherwise survive an
 // integration upgrade in the browser ESM module map.
-const LOTUS_VISUAL_BOOTSTRAP_VERSION = "0.9.6";
+const LOTUS_VISUAL_BOOTSTRAP_VERSION = "0.10.9";
 await import(`./lotus-iconset.js?v=${LOTUS_VISUAL_BOOTSTRAP_VERSION}`);
 const { LOTUS_VISUAL_VERSION } = await import(`./lotus-core.js?v=${LOTUS_VISUAL_BOOTSTRAP_VERSION}`);
 
@@ -41,9 +41,3 @@ window.LotusVisual = Object.assign(window.LotusVisual || {}, {
   slideType: "custom:lotus-slide-card",
   digicodeType: "custom:lotus-digicode-card",
 });
-
-console.info(
-  `%c LOTUS VISUAL %c v${LOTUS_VISUAL_VERSION} `,
-  "color:white;background:#00897b;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px;",
-  "color:#00897b;background:#e0f2f1;font-weight:700;padding:2px 6px;border-radius:0 4px 4px 0;",
-);
