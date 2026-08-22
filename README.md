@@ -22,6 +22,16 @@ The Home Assistant integration is located in:
 
 `custom_components/lotus_visual`
 
+## License
+
+Lotus Visual is licensed under the **PolyForm Noncommercial License 1.0.0** (`PolyForm-Noncommercial-1.0.0`).
+
+You may use, modify and redistribute Lotus Visual for purposes permitted by that license. Commercial use is **not** granted by the public license.
+
+If you want to integrate Lotus Visual into a paid product or service, provide it as part of a paid Home Assistant installation, resell it, or otherwise use it commercially, you must obtain a separate written commercial license from the copyright holder(s).
+
+See [LICENSE](LICENSE) for the public license notice and [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) for the commercial licensing policy.
+
 ## Support
 
 Use the [GitHub issue tracker](https://github.com/NALINFORGE/LotusVisual/issues) to report reproducible bugs or request enhancements.
