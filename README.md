@@ -2,6 +2,8 @@
 
 Lotus Visual is a visual dashboard editing suite for Home Assistant.
 
+Repository: [NALINFORGE/LotusVisual](https://github.com/NALINFORGE/LotusVisual)
+
 ## Installation with HACS
 
 1. Open HACS in Home Assistant.
@@ -22,7 +24,7 @@ The Home Assistant integration is located in:
 
 ## Support
 
-Use the GitHub issue tracker to report reproducible bugs or request enhancements.
+Use the [GitHub issue tracker](https://github.com/NALINFORGE/LotusVisual/issues) to report reproducible bugs or request enhancements.
 
 If Lotus Visual is useful to you and you would like to support the continued development, testing and maintenance of LotusLab projects, you can support the project on Ko-fi:
 
