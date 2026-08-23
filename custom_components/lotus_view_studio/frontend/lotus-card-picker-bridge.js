@@ -8,8 +8,8 @@
  * and already-mounted pickers are rebuilt once.
  */
 
-import { registerLotusCards } from "./lotus-card-registry.js?v=0.12.2";
-import { lotusDebug, lotusSetHass } from "./lotus-i18n.js?v=0.12.2";
+import { registerLotusCards } from "./lotus-card-registry.js?v=0.13.0b0";
+import { lotusDebug, lotusSetHass } from "./lotus-i18n.js?v=0.13.0b0";
 
 const PATCHED = Symbol.for("lotusVisual.cardPickerPatched.v1");
 

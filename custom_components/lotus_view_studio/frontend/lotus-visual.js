@@ -1,7 +1,7 @@
 // Bootstrap version is intentionally local: the first import must itself be
 // cache-busted. A static import of lotus-core.js could otherwise survive an
 // integration upgrade in the browser ESM module map.
-const LOTUS_VISUAL_BOOTSTRAP_VERSION = "0.12.2";
+const LOTUS_VISUAL_BOOTSTRAP_VERSION = "0.13.0b1";
 await import(`./lotus-iconset.js?v=${LOTUS_VISUAL_BOOTSTRAP_VERSION}`);
 const { LOTUS_VISUAL_VERSION } = await import(`./lotus-core.js?v=${LOTUS_VISUAL_BOOTSTRAP_VERSION}`);
 
@@ -22,6 +22,11 @@ await import(`./lotus-icon-size-bridge.js?v=${LOTUS_VISUAL_VERSION}`);
 // registrations are repaired even when a legacy element was loaded first.
 await import(`./lotus-visual-stack.js?v=${LOTUS_VISUAL_VERSION}`);
 await import(`./lotus-slide-card.js?v=${LOTUS_VISUAL_VERSION}`);
+// 0.13.0b1 keeps the stable 1.3.0 runtime and applies editor-only UX
+// improvements after the custom element has been registered.
+await import(`./lotus-slide-editor-b1.js?v=${LOTUS_VISUAL_VERSION}`);
+await import(`./lotus-slide-editor-direct-b1.js?v=${LOTUS_VISUAL_VERSION}`);
+await import(`./lotus-slide-editor-direct-fix-b1.js?v=${LOTUS_VISUAL_VERSION}`);
 await import(`./lotus-digicode-card.js?v=${LOTUS_VISUAL_VERSION}`);
 if (!customElements.get("lotus-layers-card")) {
   await import(`./lotus-layers.js?v=${LOTUS_VISUAL_VERSION}`);

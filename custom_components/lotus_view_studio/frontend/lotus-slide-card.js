@@ -1,15 +1,15 @@
 /*
- * Lotus Slide 1.2.1
- * Slide-to-confirm Lovelace card for Lotus View Studio.
+ * Lotus Slide 1.3.0
+ * Slide-to-confirm and two-position Lovelace card for Lotus View Studio.
  *
  * The card uses Home Assistant native ui_action configuration for the action
  * executed once the handle reaches the validation threshold and is released.
  */
 
-import { deepClone, clamp } from "./lotus-core.js?v=0.12.2";
-import { lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.12.2";
+import { deepClone, clamp } from "./lotus-core.js?v=0.13.0b0";
+import { lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b0";
 
-const LOTUS_SLIDE_VERSION = "1.2.1";
+const LOTUS_SLIDE_VERSION = "1.3.0";
 const LOTUS_SLIDE_TYPE = "custom:lotus-slide-card";
 const DEFAULT_SLIDE_LABEL = "Glisser pour valider";
 const DEFAULT_SLIDE_SUCCESS_LABEL = "Relâcher pour valider";
@@ -38,6 +38,56 @@ const colorCss = (value, fallback = "var(--primary-color, #03a9f4)") => {
   if (color === "disabled") return "var(--disabled-text-color, #9e9e9e)";
   if (HA_THEME_COLORS.has(color)) return `var(--${color}-color, ${fallback})`;
   return color;
+};
+
+const MAX_SIDE_VISUAL_VALUES = 20;
+
+const stateConditionMatches = (rawValue, expression) => {
+  const raw = rawValue === undefined || rawValue === null ? "" : String(rawValue).trim();
+  const condition = String(expression ?? "").trim();
+  if (!condition) return false;
+  const comparison = condition.match(/^(<=|>=|!=|==|=|<|>)\s*(-?\d+(?:[\.,]\d+)?)$/);
+  if (comparison) {
+    const operator = comparison[1];
+    const expected = Number(comparison[2].replace(",", "."));
+    const actual = Number(raw.replace(",", "."));
+    if (!Number.isFinite(actual) || !Number.isFinite(expected)) return false;
+    if (operator === "<") return actual < expected;
+    if (operator === "<=") return actual <= expected;
+    if (operator === ">") return actual > expected;
+    if (operator === ">=") return actual >= expected;
+    if (operator === "!=") return actual !== expected;
+    return actual === expected;
+  }
+  if (/^-?\d+(?:[\.,]\d+)?$/.test(condition)) {
+    const actual = Number(raw.replace(",", "."));
+    const expected = Number(condition.replace(",", "."));
+    return Number.isFinite(actual) && actual === expected;
+  }
+  return raw === condition;
+};
+
+const binaryConditionMatches = (rawValue, expression) => {
+  const raw = String(rawValue ?? "").trim().toLowerCase();
+  const condition = String(expression ?? "").trim().toLowerCase();
+  const numeric = Number(raw.replace(",", "."));
+  const offLike = raw === "off" || raw === "false" || (Number.isFinite(numeric) && numeric === 0);
+  const onLike = raw === "on" || raw === "true" || (Number.isFinite(numeric) && numeric === 1);
+  if (["off", "false", "0", "0.0"].includes(condition)) return offLike;
+  if (["on", "true", "1", "1.0"].includes(condition)) return onLike;
+  return stateConditionMatches(rawValue, expression);
+};
+
+const isOnLike = (rawValue) => {
+  const raw = String(rawValue ?? "").trim().toLowerCase();
+  const numeric = Number(raw.replace(",", "."));
+  return raw === "on" || raw === "true" || (Number.isFinite(numeric) && numeric === 1);
+};
+
+const isOffLike = (rawValue) => {
+  const raw = String(rawValue ?? "").trim().toLowerCase();
+  const numeric = Number(raw.replace(",", "."));
+  return raw === "off" || raw === "false" || (Number.isFinite(numeric) && numeric === 0);
 };
 
 // Slider geometry: a rectangular body can be chamfered into an octagon.
@@ -139,12 +189,28 @@ const defaultIcon = (icon = "", size = 42, start = "secondary-text", end = "prim
   icon,
   size,
   dynamic,
+  auto_direction: false,
   color_start: start,
   color_end: end,
 });
 
 const defaultSideIcon = (icon = "", size = 42, start = "secondary-text", end = "primary", dynamic = true) => ({
   ...defaultIcon(icon, size, start, end, dynamic),
+  visual_type: "icon",
+  image: "",
+  image_fit: "contain",
+  state_entity: "",
+  state_mode: "static",
+  binary_state_1: "off",
+  binary_icon_1: "",
+  binary_color_1: "state",
+  binary_image_1: "",
+  binary_state_2: "on",
+  binary_icon_2: "",
+  binary_color_2: "state",
+  binary_image_2: "",
+  value_count: 0,
+  values: [],
   background: {
     enabled: false,
     color: "black",
@@ -157,10 +223,20 @@ const defaultSideIcon = (icon = "", size = 42, start = "secondary-text", end = "
 const baseConfig = () => ({
   type: LOTUS_SLIDE_TYPE,
   name: "",
+  mode: "confirm",
   orientation: "horizontal",
   reverse: false,
   entity: "",
   threshold: 90,
+  two_state: {
+    state_entity: "",
+    control_mode: "boolean",
+    boolean_end_is_on: true,
+    start_state: "off",
+    end_state: "on",
+    start_action: { action: "none" },
+    end_action: { action: "none" },
+  },
   reset_delay: 650,
   interaction: { modal_blocker: false },
   design: { width: 100, height: 18 },
@@ -205,6 +281,7 @@ const normalizeIcon = (source, fallback) => {
     icon: String(source?.icon ?? fallback.icon ?? ""),
     size: num(source?.size, fallback.size, 12, 100),
     dynamic: source?.dynamic !== false,
+    auto_direction: source?.auto_direction === true,
     color_start: String(source?.color_start ?? fallback.color_start),
     color_end: String(source?.color_end ?? fallback.color_end),
   };
@@ -224,12 +301,53 @@ const normalizeIcon = (source, fallback) => {
   return normalized;
 };
 
+const normalizeSideIcon = (source, fallback) => {
+  const normalized = normalizeIcon(source, fallback);
+  normalized.visual_type = source?.visual_type === "image" ? "image" : "icon";
+  normalized.image = String(source?.image ?? fallback?.image ?? "");
+  normalized.image_fit = ["contain", "cover", "fill"].includes(source?.image_fit)
+    ? source.image_fit
+    : (fallback?.image_fit ?? "contain");
+  normalized.state_entity = String(source?.state_entity ?? fallback?.state_entity ?? "").trim();
+  normalized.state_mode = ["static", "binary", "integer"].includes(source?.state_mode)
+    ? source.state_mode
+    : (fallback?.state_mode ?? "static");
+  normalized.binary_state_1 = String(source?.binary_state_1 ?? fallback?.binary_state_1 ?? "off");
+  normalized.binary_icon_1 = String(source?.binary_icon_1 ?? fallback?.binary_icon_1 ?? "");
+  normalized.binary_color_1 = String(source?.binary_color_1 ?? fallback?.binary_color_1 ?? "state");
+  normalized.binary_image_1 = String(source?.binary_image_1 ?? fallback?.binary_image_1 ?? "");
+  normalized.binary_state_2 = String(source?.binary_state_2 ?? fallback?.binary_state_2 ?? "on");
+  normalized.binary_icon_2 = String(source?.binary_icon_2 ?? fallback?.binary_icon_2 ?? "");
+  normalized.binary_color_2 = String(source?.binary_color_2 ?? fallback?.binary_color_2 ?? "state");
+  normalized.binary_image_2 = String(source?.binary_image_2 ?? fallback?.binary_image_2 ?? "");
+  const sourceValues = Array.isArray(source?.values) ? source.values : [];
+  const rawCount = Object.prototype.hasOwnProperty.call(source || {}, "value_count")
+    ? Number(source.value_count)
+    : sourceValues.length;
+  const requestedCount = Math.max(0, Math.min(
+    MAX_SIDE_VISUAL_VALUES,
+    Math.floor(Number.isFinite(rawCount) ? rawCount : sourceValues.length),
+  ));
+  normalized.value_count = requestedCount;
+  normalized.values = Array.from({ length: requestedCount }, (_, index) => {
+    const entry = sourceValues[index] && typeof sourceValues[index] === "object" ? sourceValues[index] : {};
+    return {
+      value: Number.isInteger(Number(entry.value)) ? Number(entry.value) : index,
+      icon: String(entry.icon ?? ""),
+      color: String(entry.color ?? "state").trim() || "state",
+      image: String(entry.image ?? ""),
+    };
+  });
+  return normalized;
+};
+
 const normalize = (raw) => {
   const defaults = baseConfig();
   const orientation = raw?.orientation === "vertical" ? "vertical" : "horizontal";
   const defaultDesign = orientation === "vertical" ? { width: 18, height: 100 } : { width: 100, height: 18 };
   const sourceDesign = raw?.design && typeof raw.design === "object" ? raw.design : {};
   const sourceInteraction = raw?.interaction && typeof raw.interaction === "object" ? raw.interaction : {};
+  const sourceTwoState = raw?.two_state && typeof raw.two_state === "object" ? raw.two_state : {};
   const sourceTrack = raw?.track && typeof raw.track === "object" ? raw.track : {};
   const sourceThumb = raw?.thumb && typeof raw.thumb === "object" ? raw.thumb : {};
   const sourceIcons = raw?.icons && typeof raw.icons === "object" ? raw.icons : {};
@@ -252,11 +370,25 @@ const normalize = (raw) => {
     ...clone(raw || {}),
     type: LOTUS_SLIDE_TYPE,
     name: String(raw?.name ?? "").trim(),
+    mode: raw?.mode === "two_state" ? "two_state" : "confirm",
     orientation,
     reverse: raw?.reverse === true,
     entity: String(raw?.entity ?? ""),
     threshold: num(raw?.threshold, 90, 55, 100),
     reset_delay: num(raw?.reset_delay, 650, 0, 5000),
+    two_state: {
+      state_entity: String(sourceTwoState.state_entity ?? "").trim(),
+      control_mode: sourceTwoState.control_mode === "actions" ? "actions" : "boolean",
+      boolean_end_is_on: sourceTwoState.boolean_end_is_on !== false,
+      start_state: String(sourceTwoState.start_state ?? "off"),
+      end_state: String(sourceTwoState.end_state ?? "on"),
+      start_action: sourceTwoState.start_action && typeof sourceTwoState.start_action === "object"
+        ? clone(sourceTwoState.start_action)
+        : { action: "none" },
+      end_action: sourceTwoState.end_action && typeof sourceTwoState.end_action === "object"
+        ? clone(sourceTwoState.end_action)
+        : { action: "none" },
+    },
     interaction: {
       modal_blocker: sourceInteraction.modal_blocker === true,
     },
@@ -281,8 +413,8 @@ const normalize = (raw) => {
       radius: num(sourceThumb.radius, 50, 0, 50),
     },
     icons: {
-      start: normalizeIcon(sourceIcons.start, defaults.icons.start),
-      end: normalizeIcon(sourceIcons.end, defaults.icons.end),
+      start: normalizeSideIcon(sourceIcons.start, defaults.icons.start),
+      end: normalizeSideIcon(sourceIcons.end, defaults.icons.end),
       thumb: normalizeIcon(sourceIcons.thumb, defaults.icons.thumb),
     },
     text: {
@@ -312,8 +444,11 @@ class LotusSlideCard extends HTMLElement {
     this._hass = undefined;
     this._preview = false;
     this._progress = 0;
+    this._dragOrigin = 0;
     this._dragging = false;
     this._busy = false;
+    this._mediaImageCache = new Map();
+    this._mediaImagePending = new Set();
     this._resizeObserver = new ResizeObserver(() => this._updateGeometry());
   }
 
@@ -330,12 +465,15 @@ class LotusSlideCard extends HTMLElement {
     if (!config) throw new Error("Configuration Lotus Slide manquante.");
     this._config = normalize(config);
     this._progress = 0;
+    if (this._config.mode === "two_state") this._syncTwoStateFromHass({ force: true });
     this._render();
   }
 
   set hass(hass) {
     lotusSetHass(hass);
     this._hass = hass;
+    if (this._config.mode === "two_state") this._syncTwoStateFromHass();
+    this._refreshStateVisuals();
   }
   get hass() { return this._hass; }
 
@@ -369,48 +507,131 @@ class LotusSlideCard extends HTMLElement {
     }));
   }
 
-  async _executeAction(actionConfig) {
-    if (!this._hass || this._preview || this._busy) return;
+  _hasAction(actionConfig) {
+    return Boolean(actionConfig && typeof actionConfig === "object" && String(actionConfig.action ?? "none") !== "none");
+  }
+
+  async _performAction(actionConfig) {
+    if (!this._hass || this._preview) return;
     const config = actionConfig && typeof actionConfig === "object" ? actionConfig : { action: "none" };
     const action = String(config.action ?? "none");
     if (!action || action === "none") return;
+    const defaultEntity = this._config.mode === "two_state" ? this._twoStateEntity() : this._config.entity;
+    const entityId = config.entity || defaultEntity;
+    if (action === "more-info") {
+      this._fireMoreInfo(entityId);
+    } else if (action === "toggle") {
+      if (entityId) await this._hass.callService("homeassistant", "toggle", {}, { entity_id: entityId });
+    } else if (action === "navigate") {
+      const path = String(config.navigation_path ?? "").trim();
+      if (path) {
+        window.history.pushState(null, "", path);
+        window.dispatchEvent(new Event("location-changed"));
+      }
+    } else if (action === "url") {
+      const url = String(config.url_path ?? config.url ?? "").trim();
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    } else if (action === "perform-action" || action === "call-service") {
+      const serviceName = String(config.perform_action ?? config.service ?? "").trim();
+      if (serviceName.includes(".")) {
+        const dot = serviceName.indexOf(".");
+        const domain = serviceName.slice(0, dot);
+        const service = serviceName.slice(dot + 1);
+        const data = config.data ?? config.service_data ?? {};
+        const target = config.target && typeof config.target === "object"
+          ? config.target
+          : entityId ? { entity_id: entityId } : {};
+        await this._hass.callService(domain, service, data, target);
+      }
+    }
+  }
 
-    const entityId = config.entity || this._config.entity;
+  async _executeAction(actionConfig) {
+    if (!this._hass || this._preview || this._busy || !this._hasAction(actionConfig)) return;
     this._busy = true;
     this.setAttribute("busy", "");
     try {
-      if (action === "more-info") {
-        this._fireMoreInfo(entityId);
-      } else if (action === "toggle") {
-        if (entityId) await this._hass.callService("homeassistant", "toggle", {}, { entity_id: entityId });
-      } else if (action === "navigate") {
-        const path = String(config.navigation_path ?? "").trim();
-        if (path) {
-          window.history.pushState(null, "", path);
-          window.dispatchEvent(new Event("location-changed"));
-        }
-      } else if (action === "url") {
-        const url = String(config.url_path ?? config.url ?? "").trim();
-        if (url) window.open(url, "_blank", "noopener,noreferrer");
-      } else if (action === "perform-action" || action === "call-service") {
-        const serviceName = String(config.perform_action ?? config.service ?? "").trim();
-        if (serviceName.includes(".")) {
-          const dot = serviceName.indexOf(".");
-          const domain = serviceName.slice(0, dot);
-          const service = serviceName.slice(dot + 1);
-          const data = config.data ?? config.service_data ?? {};
-          const target = config.target && typeof config.target === "object"
-            ? config.target
-            : entityId ? { entity_id: entityId } : {};
-          await this._hass.callService(domain, service, data, target);
-        }
-      }
+      await this._performAction(actionConfig);
     } finally {
       const delay = this._config.reset_delay;
       window.setTimeout(() => {
         this._busy = false;
         this.removeAttribute("busy");
         this._setProgress(0);
+      }, delay);
+    }
+  }
+
+  _twoStateEntity() {
+    return String(this._config.two_state?.state_entity ?? "").trim();
+  }
+
+  _twoStateProgressFromHass() {
+    const entityId = this._twoStateEntity();
+    if (!entityId || !this._hass?.states?.[entityId]) return null;
+    const raw = this._hass.states[entityId].state;
+    const two = this._config.two_state;
+    if (two.control_mode === "boolean") {
+      if (!isOnLike(raw) && !isOffLike(raw)) return null;
+      const isOn = isOnLike(raw);
+      return (two.boolean_end_is_on ? isOn : !isOn) ? 1 : 0;
+    }
+    if (stateConditionMatches(raw, two.start_state)) return 0;
+    if (stateConditionMatches(raw, two.end_state)) return 1;
+    return null;
+  }
+
+  _syncTwoStateFromHass({ force = false } = {}) {
+    if (this._config.mode !== "two_state" || (!force && (this._dragging || this._busy))) return;
+    const progress = this._twoStateProgressFromHass();
+    if (progress === null || progress === undefined) return;
+    if (Math.abs(this._progress - progress) < 0.0001) return;
+    this._progress = progress;
+    this._dragOrigin = progress;
+    this._updateGeometry();
+  }
+
+  async _executeTwoStateTarget(targetProgress, originProgress = null) {
+    const target = targetProgress >= 0.5 ? 1 : 0;
+    const origin = originProgress === null || originProgress === undefined
+      ? (this._progress >= 0.5 ? 1 : 0)
+      : (originProgress >= 0.5 ? 1 : 0);
+    if (this._preview) {
+      this._setProgress(target);
+      this._dragOrigin = target;
+      return;
+    }
+    if (!this._hass || this._busy) return;
+    this._busy = true;
+    this.setAttribute("busy", "");
+    this._setProgress(target);
+    this._dragOrigin = target;
+    try {
+      const two = this._config.two_state;
+      if (two.control_mode === "boolean") {
+        const entityId = this._twoStateEntity();
+        if (!entityId) throw new Error("Lotus Slide: two-state boolean mode requires a state entity.");
+        const targetOn = two.boolean_end_is_on ? target === 1 : target === 0;
+        await this._hass.callService(
+          "homeassistant",
+          targetOn ? "turn_on" : "turn_off",
+          {},
+          { entity_id: entityId },
+        );
+      } else {
+        const action = target === 1 ? two.end_action : two.start_action;
+        await this._performAction(action);
+      }
+    } catch (error) {
+      this._setProgress(origin);
+      this._dragOrigin = origin;
+      throw error;
+    } finally {
+      const delay = Math.max(0, Number(this._config.reset_delay) || 0);
+      window.setTimeout(() => {
+        this._busy = false;
+        this.removeAttribute("busy");
+        this._syncTwoStateFromHass();
       }, delay);
     }
   }
@@ -439,6 +660,7 @@ class LotusSlideCard extends HTMLElement {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    if (this._config.mode === "two_state") this._dragOrigin = this._progress >= 0.5 ? 1 : 0;
     this._dragging = true;
     this.setAttribute("dragging", "");
     const thumb = event.currentTarget;
@@ -458,6 +680,22 @@ class LotusSlideCard extends HTMLElement {
     this._dragging = false;
     this.removeAttribute("dragging");
     event.currentTarget.releasePointerCapture?.(event.pointerId);
+
+    if (this._config.mode === "two_state") {
+      const origin = this._dragOrigin >= 0.5 ? 1 : 0;
+      const target = origin === 1 ? 0 : 1;
+      const threshold = this._config.threshold / 100;
+      const accepted = target === 1
+        ? this._progress >= threshold
+        : this._progress <= (1 - threshold);
+      if (accepted) {
+        this._executeTwoStateTarget(target, origin).catch((error) => console.error(error));
+      } else {
+        this._setProgress(origin);
+      }
+      return;
+    }
+
     const accepted = this._progress * 100 >= this._config.threshold;
     if (accepted) {
       this._setProgress(1);
@@ -494,11 +732,135 @@ class LotusSlideCard extends HTMLElement {
       this._setProgress(1);
       return;
     }
-    if ((event.key === "Enter" || event.key === " ") && this._progress * 100 >= this._config.threshold) {
-      event.preventDefault();
-      if (this._preview) window.setTimeout(() => this._setProgress(0), 450);
-      else this._executeAction(this._config.action);
+    if (event.key === "Enter" || event.key === " ") {
+      if (this._config.mode === "two_state") {
+        event.preventDefault();
+        const origin = this._progress >= 0.5 ? 1 : 0;
+        const target = origin === 1 ? 0 : 1;
+        this._executeTwoStateTarget(target, origin).catch((error) => console.error(error));
+      } else if (this._progress * 100 >= this._config.threshold) {
+        event.preventDefault();
+        if (this._preview) window.setTimeout(() => this._setProgress(0), 450);
+        else this._executeAction(this._config.action);
+      }
     }
+  }
+
+  _sideRawValue(conf) {
+    const entityId = String(conf?.state_entity ?? "").trim();
+    if (!entityId) return undefined;
+    return this._hass?.states?.[entityId]?.state;
+  }
+
+  _resolvedSideVisual(kind) {
+    const conf = this._config.icons[kind];
+    const fallback = conf.visual_type === "image"
+      ? { type: "image", source: String(conf.image ?? "").trim(), color: "" }
+      : { type: "icon", source: String(conf.icon ?? "").trim(), color: String(conf.color_start ?? "state") };
+    if (conf.state_mode === "static" || !conf.state_entity) return fallback;
+    const raw = this._sideRawValue(conf);
+    let mapping = null;
+    if (conf.state_mode === "integer") {
+      const numeric = Number(String(raw ?? "").trim().replace(",", "."));
+      if (Number.isInteger(numeric)) {
+        mapping = (Array.isArray(conf.values) ? conf.values : []).find(
+          (entry) => Number.isInteger(Number(entry?.value)) && Number(entry.value) === numeric,
+        ) || null;
+      }
+    } else {
+      const entries = [
+        { condition: conf.binary_state_1, icon: conf.binary_icon_1, color: conf.binary_color_1, image: conf.binary_image_1 },
+        { condition: conf.binary_state_2, icon: conf.binary_icon_2, color: conf.binary_color_2, image: conf.binary_image_2 },
+      ];
+      mapping = entries.find((entry) => binaryConditionMatches(raw, entry.condition)) || null;
+    }
+    if (!mapping) return fallback;
+    if (conf.visual_type === "image") {
+      return { type: "image", source: String(mapping.image ?? "").trim() || fallback.source, color: "" };
+    }
+    return {
+      type: "icon",
+      source: String(mapping.icon ?? "").trim() || fallback.source,
+      color: String(mapping.color ?? "state").trim() || fallback.color,
+    };
+  }
+
+  _sideHasPotentialVisual(conf) {
+    if (conf.visual_type === "image") {
+      if (String(conf.image ?? "").trim() || String(conf.binary_image_1 ?? "").trim() || String(conf.binary_image_2 ?? "").trim()) return true;
+      return Array.isArray(conf.values) && conf.values.some((entry) => String(entry?.image ?? "").trim());
+    }
+    if (String(conf.icon ?? "").trim() || String(conf.binary_icon_1 ?? "").trim() || String(conf.binary_icon_2 ?? "").trim()) return true;
+    return Array.isArray(conf.values) && conf.values.some((entry) => String(entry?.icon ?? "").trim());
+  }
+
+  _displayImageUrl(source, kind) {
+    const value = String(source ?? "").trim();
+    if (!value) return "";
+    if (!value.startsWith("media-source://")) {
+      if (value.startsWith("/") && typeof this._hass?.hassUrl === "function") return this._hass.hassUrl(value);
+      return value;
+    }
+    const cached = this._mediaImageCache.get(value);
+    if (cached) return cached;
+    if (this._hass && !this._mediaImagePending.has(value)) {
+      this._mediaImagePending.add(value);
+      this._hass.callWS({
+        type: "media_source/resolve_media",
+        media_content_id: value,
+      }).then((result) => {
+        const url = String(result?.url ?? "").trim();
+        if (url) this._mediaImageCache.set(value, typeof this._hass?.hassUrl === "function" ? this._hass.hassUrl(url) : url);
+      }).catch((error) => {
+        console.debug("Lotus Slide: unable to resolve side image", value, error);
+      }).finally(() => {
+        this._mediaImagePending.delete(value);
+        if (this.isConnected) this._refreshSideVisual(kind, true);
+      });
+    }
+    return "";
+  }
+
+  _populateSideVisual(zone, kind, force = false) {
+    const conf = this._config.icons[kind];
+    const resolved = this._resolvedSideVisual(kind);
+    const key = `${resolved.type}|${resolved.source}|${resolved.color}`;
+    if (!force && zone.dataset.resolvedKey === key) return;
+    zone.dataset.resolvedKey = key;
+    zone.dataset.resolvedColor = resolved.color || "";
+    zone.querySelectorAll(".slide-side-icon,.slide-side-image").forEach((node) => node.remove());
+    const hasPotential = this._sideHasPotentialVisual(conf);
+    zone.classList.toggle("empty", !hasPotential);
+    if (!resolved.source) return;
+    if (resolved.type === "image") {
+      const image = document.createElement("img");
+      image.className = "slide-side-image";
+      image.alt = "";
+      image.draggable = false;
+      image.style.objectFit = conf.image_fit;
+      const url = this._displayImageUrl(resolved.source, kind);
+      if (url) image.src = url;
+      else image.style.visibility = "hidden";
+      zone.appendChild(image);
+    } else {
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", resolved.source);
+      icon.className = "slide-side-icon";
+      zone.appendChild(icon);
+    }
+  }
+
+  _refreshSideVisual(kind, force = false) {
+    const zone = this.shadowRoot?.querySelector(`.slide-icon-zone[data-icon-kind="${kind}"]`);
+    if (!zone) return;
+    this._populateSideVisual(zone, kind, force);
+    this._applyIconStyle(kind, this._progress);
+  }
+
+  _refreshStateVisuals() {
+    if (!this.shadowRoot) return;
+    this._refreshSideVisual("start");
+    this._refreshSideVisual("end");
   }
 
   _iconElement(kind, semanticClass) {
@@ -506,21 +868,36 @@ class LotusSlideCard extends HTMLElement {
     const zone = document.createElement("div");
     zone.className = `slide-icon-zone ${semanticClass}`;
     zone.dataset.iconKind = kind;
-    if (!conf.icon) {
-      zone.classList.add("empty");
-      return zone;
-    }
     if (conf.background?.enabled) {
       zone.classList.add("has-background");
       zone.style.setProperty("--slide-icon-background-color", colorCss(conf.background.color, "rgba(0,0,0,.65)"));
       zone.style.setProperty("--slide-icon-background-opacity", String(clamp((Number(conf.background.opacity) || 0) / 100, 0, 1)));
       zone.style.setProperty("--slide-icon-background-radius", `${num(conf.background.radius, 50, 0, 50)}%`);
     }
-    const icon = document.createElement("ha-icon");
-    icon.setAttribute("icon", conf.icon);
-    icon.className = "slide-side-icon";
-    zone.appendChild(icon);
+    this._populateSideVisual(zone, kind, true);
     return zone;
+  }
+
+  _thumbDirectionalIcon() {
+    const conf = this._config.icons.thumb;
+    if (this._config.mode !== "two_state" || conf.auto_direction !== true) return conf.icon;
+    const origin = this._dragging ? (this._dragOrigin >= 0.5 ? 1 : 0) : (this._progress >= 0.5 ? 1 : 0);
+    const target = origin === 1 ? 0 : 1;
+    if (this._config.orientation === "vertical") {
+      const endDirection = this._config.reverse ? "down" : "up";
+      const direction = target === 1 ? endDirection : (endDirection === "up" ? "down" : "up");
+      return direction === "up" ? "mdi:chevron-double-up" : "mdi:chevron-double-down";
+    }
+    const endDirection = this._config.reverse ? "left" : "right";
+    const direction = target === 1 ? endDirection : (endDirection === "right" ? "left" : "right");
+    return direction === "right" ? "mdi:chevron-double-right" : "mdi:chevron-double-left";
+  }
+
+  _updateThumbDirection() {
+    const icon = this.shadowRoot?.querySelector(".slide-thumb-icon");
+    if (!icon) return;
+    const next = this._thumbDirectionalIcon();
+    if (next && icon.getAttribute("icon") !== next) icon.setAttribute("icon", next);
   }
 
   _render() {
@@ -547,9 +924,10 @@ class LotusSlideCard extends HTMLElement {
     thumb.setAttribute("aria-valuemax", "100");
     thumb.setAttribute("aria-label", localizedSlideLabel(c.text.label, DEFAULT_SLIDE_LABEL));
 
-    if (c.icons.thumb.icon) {
+    const thumbDisplayIcon = this._thumbDirectionalIcon();
+    if (thumbDisplayIcon) {
       const thumbIcon = document.createElement("ha-icon");
-      thumbIcon.setAttribute("icon", c.icons.thumb.icon);
+      thumbIcon.setAttribute("icon", thumbDisplayIcon);
       thumbIcon.className = "slide-thumb-icon";
       thumb.appendChild(thumbIcon);
     }
@@ -656,8 +1034,9 @@ class LotusSlideCard extends HTMLElement {
       .slide-thumb:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb, var(--primary-color,#03a9f4) 35%, transparent), 0 2px 8px rgba(0,0,0,.22); }
       :host([busy]) .slide-thumb { opacity:.72; cursor:wait; }
 
-      .slide-side-icon, .slide-thumb-icon { display:block; }
-      .slide-side-icon { grid-area:1 / 1; position:relative; z-index:1; }
+      .slide-side-icon, .slide-side-image, .slide-thumb-icon { display:block; }
+      .slide-side-icon, .slide-side-image { grid-area:1 / 1; position:relative; z-index:1; }
+      .slide-side-image { max-width:100%; max-height:100%; object-position:center; user-select:none; pointer-events:none; }
       .horizontal .slide-side-icon { --mdc-icon-size:min(${c.icons.start.size}cqh, ${c.icons.start.size}cqw); }
       .vertical .slide-side-icon { --mdc-icon-size:min(${c.icons.start.size}cqh, ${c.icons.start.size}cqw); }
     `;
@@ -673,19 +1052,27 @@ class LotusSlideCard extends HTMLElement {
       : this.shadowRoot?.querySelector(`.slide-icon-zone[data-icon-kind="${kind}"]`);
     const target = kind === "thumb"
       ? this.shadowRoot?.querySelector(".slide-thumb-icon")
-      : zone?.querySelector(".slide-side-icon");
+      : zone?.querySelector(".slide-side-icon,.slide-side-image");
     if (!target) return;
-    const start = colorCss(conf.color_start, "var(--secondary-text-color,#727272)");
-    const end = colorCss(conf.color_end, start);
-    target.style.color = conf.dynamic
-      ? `color-mix(in srgb, ${start} ${(1 - progress) * 100}%, ${end} ${progress * 100}%)`
-      : start;
+    const isImage = target.classList.contains("slide-side-image");
+    if (!isImage) {
+      const start = colorCss(conf.color_start, "var(--secondary-text-color,#727272)");
+      const end = colorCss(conf.color_end, start);
+      const stateColor = kind !== "thumb" && conf.state_mode !== "static"
+        ? String(zone?.dataset?.resolvedColor ?? "").trim()
+        : "";
+      target.style.color = stateColor && stateColor !== "state"
+        ? colorCss(stateColor, start)
+        : conf.dynamic && (kind === "thumb" || conf.state_mode === "static")
+          ? `color-mix(in srgb, ${start} ${(1 - progress) * 100}%, ${end} ${progress * 100}%)`
+          : start;
+    }
     const sizeBase = conf.size;
     const parentRect = (zone || target.parentElement)?.getBoundingClientRect?.();
     const parentShortSide = Math.max(0, Math.min(Number(parentRect?.width) || 0, Number(parentRect?.height) || 0));
     if (parentShortSide > 0) {
       const px = Math.max(1, parentShortSide * (sizeBase / 100));
-      target.style.setProperty("--mdc-icon-size", `${px}px`);
+      if (!isImage) target.style.setProperty("--mdc-icon-size", `${px}px`);
       target.style.width = `${px}px`;
       target.style.height = `${px}px`;
       if (zone && conf.background?.enabled) {
@@ -814,7 +1201,15 @@ class LotusSlideCard extends HTMLElement {
       fill.style.height = "auto";
     }
 
-    const ready = p * 100 >= this._config.threshold;
+    let ready = p * 100 >= this._config.threshold;
+    if (this._config.mode === "two_state") {
+      if (!this._dragging) ready = false;
+      else {
+        const origin = this._dragOrigin >= 0.5 ? 1 : 0;
+        const threshold = this._config.threshold / 100;
+        ready = origin === 0 ? p >= threshold : p <= (1 - threshold);
+      }
+    }
     const restingLabel = localizedSlideLabel(this._config.text.label, DEFAULT_SLIDE_LABEL);
     const successLabel = localizedSlideLabel(this._config.text.success_label, DEFAULT_SLIDE_SUCCESS_LABEL);
     label.textContent = ready ? successLabel : restingLabel;
@@ -826,6 +1221,7 @@ class LotusSlideCard extends HTMLElement {
     this._applyIconStyle("start", p);
     this._applyIconStyle("end", p);
     this._applyIconStyle("thumb", p);
+    this._updateThumbDirection();
   }
 }
 
@@ -1087,20 +1483,145 @@ class LotusSlideCardEditor extends HTMLElement {
     return this._formField(parent, path, label, { icon: {} }, value, (next) => onChange(String(next ?? "")));
   }
 
+  _entityField(parent, path, label, value, onChange) {
+    this._formField(parent, path, label, { entity: {} }, value || undefined, (next) => onChange(String(next ?? "")));
+  }
+
+  _imagePicker(parent, path, label, value, onChange) {
+    const current = String(value ?? "").trim();
+    if (customElements.get("ha-form")) {
+      const form = document.createElement("ha-form");
+      form.className = "native-field lotus-image-picker";
+      form.hass = this._hass;
+      form.data = {
+        image: current ? { media_content_id: current, media_content_type: "image/*" } : undefined,
+      };
+      form.schema = [{
+        name: "image",
+        required: false,
+        selector: { media: { accept: ["image/*"], clearable: true, image_upload: true, hide_content_type: true } },
+      }];
+      form.computeLabel = () => lotusT(label);
+      form.dataset.fieldPath = path;
+      form.addEventListener("value-changed", (event) => {
+        const picked = event.detail?.value?.image;
+        const next = typeof picked === "string" ? picked : String(picked?.media_content_id ?? "");
+        if (next !== current) onChange(next);
+      });
+      parent.appendChild(form);
+      return form;
+    }
+    return this._text(parent, path, label, current, onChange);
+  }
+
   _entity(parent) {
-    this._formField(parent, "entity", "Entité de contexte (facultatif)", { entity: {} }, this._config.entity || undefined, (value) => {
-      this._commit((config) => { config.entity = String(value ?? ""); });
+    this._entityField(parent, "entity", "Entité de contexte (facultatif)", this._config.entity, (value) => {
+      this._commit((config) => { config.entity = value; });
     });
   }
 
-  _renderIconGroup(parent, kind, title) {
+  _renderSideVisualGroup(parent, kind, title) {
     const conf = this._config.icons[kind];
     const group = document.createElement("div");
     group.className = "subgroup";
     const h4 = document.createElement("h4");
     h4.textContent = lotusT(title);
     group.appendChild(h4);
-    this._icon(group, `icons.${kind}.icon`, "Icône", conf.icon, (value) => this._commit((c) => { c.icons[kind].icon = value; }));
+
+    this._select(group, `icons.${kind}.visual_type`, "Type visuel de l’extrémité", conf.visual_type, [["icon", "Icône"], ["image", "Image"]], (value) => this._commit((c) => { c.icons[kind].visual_type = value === "image" ? "image" : "icon"; }));
+    this._entityField(group, `icons.${kind}.state_entity`, "Entité source de l’état visuel (facultatif)", conf.state_entity, (value) => this._commit((c) => { c.icons[kind].state_entity = value; }));
+    this._select(group, `icons.${kind}.state_mode`, "Mode de variation selon l’état", conf.state_mode, [
+      ["static", "Visuel fixe"],
+      ["binary", "Deux états → visuel"],
+      ["integer", "Valeur entière → visuel"],
+    ], (value) => this._commit((c) => { c.icons[kind].state_mode = ["binary", "integer"].includes(value) ? value : "static"; }));
+
+    if (conf.visual_type === "image") {
+      this._imagePicker(group, `icons.${kind}.image`, conf.state_mode === "static" ? "Image" : "Image de secours", conf.image, (value) => this._commit((c) => { c.icons[kind].image = value; }));
+      this._select(group, `icons.${kind}.image_fit`, "Ajustement de l’image", conf.image_fit, [["contain", "Contenir"], ["cover", "Couvrir"], ["fill", "Étirer"]], (value) => this._commit((c) => { c.icons[kind].image_fit = value; }));
+    } else {
+      this._icon(group, `icons.${kind}.icon`, conf.state_mode === "static" ? "Icône" : "Icône de secours", conf.icon, (value) => this._commit((c) => { c.icons[kind].icon = value; }));
+    }
+    this._number(group, `icons.${kind}.size`, "Taille du visuel (%)", conf.size, 12, 100, 1, (value) => this._commit((c) => { c.icons[kind].size = Number(value); }));
+
+    if (conf.state_mode === "binary") {
+      for (const index of [1, 2]) {
+        const map = document.createElement("div");
+        map.className = "state-map-row";
+        this._text(map, `icons.${kind}.binary_state_${index}`, `Condition ${index}`, conf[`binary_state_${index}`], (value) => this._commit((c) => { c.icons[kind][`binary_state_${index}`] = value; }));
+        if (conf.visual_type === "image") {
+          this._imagePicker(map, `icons.${kind}.binary_image_${index}`, `Image ${index}`, conf[`binary_image_${index}`], (value) => this._commit((c) => { c.icons[kind][`binary_image_${index}`] = value; }));
+        } else {
+          this._icon(map, `icons.${kind}.binary_icon_${index}`, `Icône ${index}`, conf[`binary_icon_${index}`], (value) => this._commit((c) => { c.icons[kind][`binary_icon_${index}`] = value; }));
+          this._color(map, `icons.${kind}.binary_color_${index}`, `Couleur ${index}`, conf[`binary_color_${index}`], (value) => this._commit((c) => { c.icons[kind][`binary_color_${index}`] = value; }), true);
+        }
+        group.appendChild(map);
+      }
+      const helper = document.createElement("p");
+      helper.className = "helper";
+      helper.textContent = lotusT("OFF/0/false et ON/1/true sont reconnus comme états binaires équivalents. Les comparaisons numériques restent possibles.");
+      group.appendChild(helper);
+    } else if (conf.state_mode === "integer") {
+      this._number(group, `icons.${kind}.value_count`, "Nombre de valeurs", conf.value_count, 0, MAX_SIDE_VISUAL_VALUES, 1, (value) => this._commit((c) => {
+        const side = c.icons[kind];
+        const count = Math.max(0, Math.min(MAX_SIDE_VISUAL_VALUES, Math.floor(Number(value) || 0)));
+        const previous = Array.isArray(side.values) ? side.values : [];
+        side.value_count = count;
+        side.values = Array.from({ length: count }, (_, idx) => ({
+          value: Number.isInteger(Number(previous[idx]?.value)) ? Number(previous[idx].value) : idx,
+          icon: String(previous[idx]?.icon ?? ""),
+          color: String(previous[idx]?.color ?? "state"),
+          image: String(previous[idx]?.image ?? ""),
+        }));
+      }), "box");
+      for (let index = 0; index < conf.value_count; index += 1) {
+        const mapping = conf.values[index] ?? { value: index, icon: "", color: "state", image: "" };
+        const map = document.createElement("div");
+        map.className = "state-map-row";
+        this._number(map, `icons.${kind}.values.${index}.value`, `Valeur ${index + 1}`, mapping.value, -999999, 999999, 1, (value) => this._commit((c) => { c.icons[kind].values[index].value = Number(value); }), "box");
+        if (conf.visual_type === "image") {
+          this._imagePicker(map, `icons.${kind}.values.${index}.image`, `Image ${index + 1}`, mapping.image, (value) => this._commit((c) => { c.icons[kind].values[index].image = value; }));
+        } else {
+          this._icon(map, `icons.${kind}.values.${index}.icon`, `Icône ${index + 1}`, mapping.icon, (value) => this._commit((c) => { c.icons[kind].values[index].icon = value; }));
+          this._color(map, `icons.${kind}.values.${index}.color`, `Couleur ${index + 1}`, mapping.color, (value) => this._commit((c) => { c.icons[kind].values[index].color = value; }), true);
+        }
+        group.appendChild(map);
+      }
+    }
+
+    this._boolean(group, `icons.${kind}.background.enabled`, "Afficher un fond derrière le visuel", conf.background.enabled, (value) => this._commit((c) => { c.icons[kind].background.enabled = value; }));
+    if (conf.background.enabled) {
+      this._color(group, `icons.${kind}.background.color`, "Couleur du fond du visuel", conf.background.color, (value) => this._commit((c) => { c.icons[kind].background.color = value; }));
+      this._number(group, `icons.${kind}.background.opacity`, "Opacité du fond (%)", conf.background.opacity, 0, 100, 1, (value) => this._commit((c) => { c.icons[kind].background.opacity = Number(value); }));
+      this._number(group, `icons.${kind}.background.size`, "Taille du fond (%)", conf.background.size, 20, 100, 1, (value) => this._commit((c) => { c.icons[kind].background.size = Number(value); }));
+      this._number(group, `icons.${kind}.background.radius`, "Arrondi du fond (%)", conf.background.radius, 0, 50, 1, (value) => this._commit((c) => { c.icons[kind].background.radius = Number(value); }));
+    }
+
+    if (conf.visual_type === "icon" && conf.state_mode === "static") {
+      this._boolean(group, `icons.${kind}.dynamic`, "Couleur liée à la position du curseur", conf.dynamic, (value) => this._commit((c) => { c.icons[kind].dynamic = value; }));
+      this._color(group, `icons.${kind}.color_start`, "Couleur au départ", conf.color_start, (value) => this._commit((c) => { c.icons[kind].color_start = value; }));
+      if (conf.dynamic) this._color(group, `icons.${kind}.color_end`, "Couleur à l’arrivée", conf.color_end, (value) => this._commit((c) => { c.icons[kind].color_end = value; }));
+    }
+    parent.appendChild(group);
+  }
+
+  _renderIconGroup(parent, kind, title) {
+    if (kind !== "thumb") {
+      this._renderSideVisualGroup(parent, kind, title);
+      return;
+    }
+    const conf = this._config.icons[kind];
+    const group = document.createElement("div");
+    group.className = "subgroup";
+    const h4 = document.createElement("h4");
+    h4.textContent = lotusT(title);
+    group.appendChild(h4);
+    if (this._config.mode === "two_state") {
+      this._boolean(group, `icons.${kind}.auto_direction`, "Adapter automatiquement le sens de la flèche", conf.auto_direction, (value) => this._commit((c) => { c.icons[kind].auto_direction = value; }));
+    }
+    if (this._config.mode !== "two_state" || !conf.auto_direction) {
+      this._icon(group, `icons.${kind}.icon`, "Icône", conf.icon, (value) => this._commit((c) => { c.icons[kind].icon = value; }));
+    }
     this._number(group, `icons.${kind}.size`, "Taille de l’icône (%)", conf.size, 12, 100, 1, (value) => this._commit((c) => { c.icons[kind].size = Number(value); }));
     if (kind !== "thumb") {
       this._boolean(group, `icons.${kind}.background.enabled`, "Afficher un fond derrière l’icône", conf.background.enabled, (value) => this._commit((c) => { c.icons[kind].background.enabled = value; }));
@@ -1119,18 +1640,31 @@ class LotusSlideCardEditor extends HTMLElement {
     parent.appendChild(group);
   }
 
-  _renderAction(parent) {
+  _actionForPath(path) {
+    if (path === "two_state.start_action") return this._config.two_state.start_action;
+    if (path === "two_state.end_action") return this._config.two_state.end_action;
+    return this._config.action;
+  }
+
+  _setActionPath(config, path, value) {
+    if (path === "two_state.start_action") config.two_state.start_action = value;
+    else if (path === "two_state.end_action") config.two_state.end_action = value;
+    else config.action = value;
+  }
+
+  _renderAction(parent, path = "action", label = "Action exécutée après validation") {
     if (customElements.get("ha-form")) {
       const form = document.createElement("ha-form");
       form.className = "native-field action-field";
       form.hass = this._hass;
-      form.data = { action: clone(this._config.action) };
-      form.context = this._config.entity ? { entity_id: this._config.entity } : undefined;
+      form.data = { action: clone(this._actionForPath(path)) };
+      const contextEntity = this._config.mode === "two_state" ? this._config.two_state.state_entity : this._config.entity;
+      form.context = contextEntity ? { entity_id: contextEntity } : undefined;
       form.schema = [{ name: "action", required: false, selector: { ui_action: { default_action: "none" } } }];
-      form.computeLabel = () => lotusT("Action exécutée après validation");
+      form.computeLabel = () => lotusT(label);
       form.addEventListener("value-changed", (event) => {
         const value = event.detail?.value?.action;
-        this._commit((config) => { config.action = value && typeof value === "object" ? clone(value) : { action: "none" }; });
+        this._commit((config) => this._setActionPath(config, path, value && typeof value === "object" ? clone(value) : { action: "none" }));
       });
       parent.appendChild(form);
     } else {
@@ -1153,14 +1687,37 @@ class LotusSlideCardEditor extends HTMLElement {
     this._text(identity, "name", "Nom", this._config.name, (value) => this._commit((c) => { c.name = value; }));
     pane.appendChild(identity);
 
-    const general = this._section("Comportement", "Le curseur doit atteindre le seuil puis être relâché pour exécuter l’action.");
+    const twoStateMode = this._config.mode === "two_state";
+    const general = this._section(
+      "Comportement",
+      twoStateMode
+        ? "Le curseur possède deux positions fixes. Il peut être déplacé dans les deux sens comme un interrupteur."
+        : "Le curseur doit atteindre le seuil puis être relâché pour exécuter l’action.",
+    );
+    this._select(general, "mode", "Mode du slider", this._config.mode, [["confirm", "Validation à sens unique"], ["two_state", "Deux positions fixes / interrupteur"]], (value) => {
+      this._commit((config) => {
+        config.mode = value === "two_state" ? "two_state" : "confirm";
+        if (config.mode === "two_state" && config.icons.thumb.icon.startsWith("mdi:chevron-double-")) config.icons.thumb.auto_direction = true;
+      });
+    });
     this._select(general, "orientation", "Orientation", this._config.orientation, [["horizontal", "Horizontale"], ["vertical", "Verticale"]], (value) => {
       this._commit((config) => { config.orientation = value === "vertical" ? "vertical" : "horizontal"; }, { orientationChanged: true });
     });
     this._boolean(general, "reverse", this._config.orientation === "vertical" ? "Inverser le sens (haut → bas)" : "Inverser le sens (droite → gauche)", this._config.reverse, (value) => this._commit((c) => { c.reverse = value; }));
-    this._number(general, "threshold", "Seuil de validation (%)", this._config.threshold, 55, 100, 1, (value) => this._commit((c) => { c.threshold = Number(value); }));
-    this._number(general, "reset_delay", "Délai avant retour au départ (ms)", this._config.reset_delay, 0, 5000, 50, (value) => this._commit((c) => { c.reset_delay = Number(value); }), "box");
-    this._entity(general);
+    this._number(general, "threshold", twoStateMode ? "Seuil pour basculer vers l’autre position (%)" : "Seuil de validation (%)", this._config.threshold, 55, 100, 1, (value) => this._commit((c) => { c.threshold = Number(value); }));
+    this._number(general, "reset_delay", twoStateMode ? "Délai de synchronisation après bascule (ms)" : "Délai avant retour au départ (ms)", this._config.reset_delay, 0, 5000, 50, (value) => this._commit((c) => { c.reset_delay = Number(value); }), "box");
+    if (twoStateMode) {
+      this._entityField(general, "two_state.state_entity", "Entité qui porte l’état du slider", this._config.two_state.state_entity, (value) => this._commit((c) => { c.two_state.state_entity = value; }));
+      this._select(general, "two_state.control_mode", "Pilotage des deux positions", this._config.two_state.control_mode, [["boolean", "Entité booléenne ON / OFF"], ["actions", "Actions Home Assistant distinctes"]], (value) => this._commit((c) => { c.two_state.control_mode = value === "actions" ? "actions" : "boolean"; }));
+      if (this._config.two_state.control_mode === "boolean") {
+        this._boolean(general, "two_state.boolean_end_is_on", "La position d’arrivée correspond à ON", this._config.two_state.boolean_end_is_on, (value) => this._commit((c) => { c.two_state.boolean_end_is_on = value; }));
+      } else {
+        this._text(general, "two_state.start_state", "Valeur d’état de la position de départ", this._config.two_state.start_state, (value) => this._commit((c) => { c.two_state.start_state = value; }));
+        this._text(general, "two_state.end_state", "Valeur d’état de la position d’arrivée", this._config.two_state.end_state, (value) => this._commit((c) => { c.two_state.end_state = value; }));
+      }
+    } else {
+      this._entity(general);
+    }
     pane.appendChild(general);
 
     const interaction = this._section(
@@ -1223,9 +1780,13 @@ class LotusSlideCardEditor extends HTMLElement {
     );
     pane.appendChild(thumb);
 
-    const icons = this._section("Icônes", "Chaque icône peut conserver une couleur fixe ou évoluer progressivement avec la position du curseur.");
-    const startLabel = this._config.orientation === "vertical" ? "Icône de départ" : "Icône gauche / départ";
-    const endLabel = this._config.orientation === "vertical" ? "Icône d’arrivée" : "Icône droite / arrivée";
+    const icons = this._section("Icônes et images d’extrémité", "Chaque extrémité peut utiliser sa propre entité source et afficher une icône ou une image différente selon son état.");
+    const startLabel = this._config.orientation === "vertical"
+      ? (this._config.reverse ? "Extrémité haute / départ" : "Extrémité basse / départ")
+      : (this._config.reverse ? "Extrémité droite / départ" : "Extrémité gauche / départ");
+    const endLabel = this._config.orientation === "vertical"
+      ? (this._config.reverse ? "Extrémité basse / arrivée" : "Extrémité haute / arrivée")
+      : (this._config.reverse ? "Extrémité gauche / arrivée" : "Extrémité droite / arrivée");
     this._renderIconGroup(icons, "start", startLabel);
     this._renderIconGroup(icons, "end", endLabel);
     this._renderIconGroup(icons, "thumb", "Icône du bouton");
@@ -1239,9 +1800,16 @@ class LotusSlideCardEditor extends HTMLElement {
     this._number(text, "text.font_size", "Taille du texte (px)", this._config.text.font_size, 8, 36, 1, (value) => this._commit((c) => { c.text.font_size = Number(value); }));
     pane.appendChild(text);
 
-    const action = this._section("Action Home Assistant", "Lotus utilise ici l’éditeur d’action natif Home Assistant.");
-    this._renderAction(action);
-    pane.appendChild(action);
+    if (!twoStateMode) {
+      const action = this._section("Action Home Assistant", "Lotus utilise ici l’éditeur d’action natif Home Assistant.");
+      this._renderAction(action);
+      pane.appendChild(action);
+    } else if (this._config.two_state.control_mode === "actions") {
+      const action = this._section("Actions des deux positions", "Chaque sens peut exécuter une action Home Assistant différente. L’entité d’état reste utilisée pour synchroniser la position du curseur.");
+      this._renderAction(action, "two_state.start_action", "Action en arrivant sur la position de départ");
+      this._renderAction(action, "two_state.end_action", "Action en arrivant sur la position d’arrivée");
+      pane.appendChild(action);
+    }
 
     const previewTitle = document.createElement("div");
     previewTitle.className = "preview-title";
@@ -1275,6 +1843,8 @@ class LotusSlideCardEditor extends HTMLElement {
       .native-field { display:block; width:100%; margin:10px 0; }
       .subgroup { margin:12px 0; padding:12px; border:1px solid var(--divider-color,rgba(127,127,127,.22)); border-radius:12px; }
       .subgroup h4 { margin:0 0 8px; font-size:13px; }
+      .state-map-row { margin:10px 0; padding:8px 10px; border-left:3px solid var(--divider-color,rgba(127,127,127,.28)); }
+      .helper { margin:8px 0; color:var(--secondary-text-color,#727272); font-size:12px; line-height:1.4; }
       .fallback-field { display:grid; gap:5px; margin:10px 0; font-size:12px; }
       .fallback-field input { box-sizing:border-box; width:100%; min-height:40px; border:1px solid var(--divider-color); border-radius:8px; padding:8px; background:var(--card-background-color,#fff); color:inherit; }
       @media (max-width:980px) {

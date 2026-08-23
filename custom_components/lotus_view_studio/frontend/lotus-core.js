@@ -1,6 +1,6 @@
-import { lotusT } from "./lotus-i18n.js?v=0.12.2";
+import { lotusT } from "./lotus-i18n.js?v=0.13.0b0";
 
-export const LOTUS_VISUAL_VERSION = "0.12.2";
+export const LOTUS_VISUAL_VERSION = "0.13.0b1";
 export const LOTUS_LAYOUT_KEY = "lotus";
 export const LOTUS_LEGACY_LAYOUT_KEYS = Object.freeze(["lotus_visual_layout"]);
 
