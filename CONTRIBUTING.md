@@ -1,8 +1,8 @@
-# Contributing to Lotus Visual
+# Contributing to Lotus View Studio
 
-Contributions are welcome, but Lotus Visual uses a dual-licensing model: public noncommercial use under the PolyForm Noncommercial License 1.0.0 and separate commercial licensing when explicitly granted by the Project Licensor.
+Contributions are welcome, but Lotus View Studio uses a dual-licensing model: public noncommercial use under the PolyForm Noncommercial License 1.0.0 and separate commercial licensing when explicitly granted by the Project Licensor.
 
-To keep that model legally consistent, every accepted contribution must be covered by the Lotus Visual Contributor License Agreement (CLA).
+Every accepted contribution must be covered by the Lotus View Studio Contributor License Agreement (CLA).
 
 ## Before submitting a contribution
 
@@ -20,18 +20,12 @@ By submitting a pull request and checking the CLA acceptance statement in the pu
 
 A contribution must not be merged unless CLA acceptance is explicit.
 
-The CLA does **not** transfer ownership of your original contribution. It grants the Project Licensor the rights necessary to incorporate, distribute, sublicense, and relicense the contribution as part of Lotus Visual, including under separate commercial licenses.
-
 ## Forks and derivatives
 
-Forking Lotus Visual does not grant additional commercial rights.
-
-Any rights to Lotus Visual code in a fork or derivative remain limited by the PolyForm Noncommercial License 1.0.0 unless a separate written commercial license has been granted by the Project Licensor. Contributors retain rights in their own original additions, but they cannot use the presence of their contributions to grant commercial rights over Lotus Visual code they do not own.
+Forking Lotus View Studio does not grant additional commercial rights. Rights to Lotus View Studio code in a fork or derivative remain limited by the PolyForm Noncommercial License 1.0.0 unless a separate written commercial license has been granted by the Project Licensor.
 
 See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) for the project's commercial-use policy.
 
 ## Pull requests
 
 Pull requests should be reviewable, narrowly scoped where practical, and should not introduce undocumented external dependencies or licensing conflicts.
-
-The maintainers may reject or request changes to any contribution for technical, security, licensing, maintainability, or project-direction reasons.
