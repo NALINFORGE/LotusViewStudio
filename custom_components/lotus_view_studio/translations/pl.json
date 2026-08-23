@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "Instaluje zintegrowany edytor wizualny pulpitów Home Assistant."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus View Studio jest już zainstalowany."
+    }
+  }
+}

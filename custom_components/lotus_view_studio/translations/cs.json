@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "Nainstaluje integrovaný vizuální editor pro dashboardy Home Assistant."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus View Studio je již nainstalován."
+    }
+  }
+}

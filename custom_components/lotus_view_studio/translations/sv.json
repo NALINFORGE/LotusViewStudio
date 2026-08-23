@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "Installerar den integrerade visuella redigeraren för Home Assistant-instrumentpaneler."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus View Studio är redan installerat."
+    }
+  }
+}

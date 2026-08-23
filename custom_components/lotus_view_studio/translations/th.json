@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "ติดตั้งตัวแก้ไขแบบภาพแบบรวมสำหรับแดชบอร์ด Home Assistant"
+      }
+    },
+    "abort": {
+      "already_configured": "ติดตั้ง Lotus View Studio แล้ว"
+    }
+  }
+}

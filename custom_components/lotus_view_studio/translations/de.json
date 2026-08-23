@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "Installiert den einheitlichen visuellen Editor für Home-Assistant-Dashboards."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus View Studio ist bereits installiert."
+    }
+  }
+}

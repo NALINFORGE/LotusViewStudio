@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "يثبّت المحرر المرئي الموحّد للوحات تحكم Home Assistant."
+      }
+    },
+    "abort": {
+      "already_configured": "تم تثبيت Lotus View Studio بالفعل."
+    }
+  }
+}

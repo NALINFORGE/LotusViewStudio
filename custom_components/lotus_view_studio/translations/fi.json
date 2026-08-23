@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "Asentaa integroidun visuaalisen editorin Home Assistant -koontinäytöille."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus View Studio on jo asennettu."
+    }
+  }
+}

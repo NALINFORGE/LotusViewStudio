@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "Instala o editor visual unificado para os painéis do Home Assistant."
+      }
+    },
+    "abort": {
+      "already_configured": "O Lotus View Studio já está instalado."
+    }
+  }
+}

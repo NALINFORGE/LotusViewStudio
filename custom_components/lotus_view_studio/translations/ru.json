@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "Устанавливает единый визуальный редактор для панелей Home Assistant."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus View Studio уже установлен."
+    }
+  }
+}

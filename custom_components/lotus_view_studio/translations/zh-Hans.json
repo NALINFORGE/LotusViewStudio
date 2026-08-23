@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "安装用于 Home Assistant 仪表板的统一可视化编辑器。"
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus View Studio 已安装。"
+    }
+  }
+}

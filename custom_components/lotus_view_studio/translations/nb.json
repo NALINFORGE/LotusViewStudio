@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "Installerer den integrerte visuelle redigereren for Home Assistant-dashbord."
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus View Studio er allerede installert."
+    }
+  }
+}

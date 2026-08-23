@@ -1,0 +1,13 @@
+"""Constants for Lotus View Studio."""
+
+DOMAIN = "lotus_view_studio"
+LEGACY_DOMAIN = "lotus_visual"
+VERSION = "0.12.2"
+URL_BASE = "/lotus_view_studio_static"
+BRAND_URL = "/lotus_view_studio_brand"
+LEGACY_URL_BASE = "/lotus_visual_static"
+LEGACY_BRAND_URL = "/lotus_visual_brand"
+PANEL_PATH = "lotus-view-studio"
+PANEL_TITLE = "Lotus View Studio"
+PANEL_ICON = "lotus:lotus"
+MODULE_URL = f"{URL_BASE}/lotus-visual.js?v={VERSION}"

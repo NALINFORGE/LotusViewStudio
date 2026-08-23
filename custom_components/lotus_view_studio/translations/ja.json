@@ -1,0 +1,14 @@
+{
+  "title": "Lotus View Studio",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lotus View Studio",
+        "description": "Home Assistant ダッシュボード用の統合ビジュアルエディターをインストールします。"
+      }
+    },
+    "abort": {
+      "already_configured": "Lotus View Studio はすでにインストールされています。"
+    }
+  }
+}
