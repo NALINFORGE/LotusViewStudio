@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Beta testing guide
+    url: https://github.com/NALINFORGE/LotusViewStudio/blob/master/BETA_TESTING.md
+    about: Read the beta testing scope and reporting guidance before opening an issue.

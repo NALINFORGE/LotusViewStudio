@@ -1,0 +1,121 @@
+name: Bug report
+about: Report a reproducible problem found while testing Lotus View Studio
+labels: ["bug", "beta"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for beta testing Lotus View Studio. Please provide enough detail to reproduce the problem. Remove passwords, access tokens, Digicode PINs, private URLs, API keys and other sensitive information before submitting logs or screenshots.
+  - type: input
+    id: lvs_version
+    attributes:
+      label: Lotus View Studio version
+      placeholder: e.g. 0.12.2 or 0.13.0b0
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: e.g. 2026.8.2
+    validations:
+      required: true
+  - type: dropdown
+    id: install_type
+    attributes:
+      label: Installation type
+      options:
+        - Fresh HACS custom repository installation
+        - Fresh manual installation
+        - Migrated from Lotus Visual
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser or Home Assistant app
+      placeholder: e.g. Firefox 142, Chrome 142, Home Assistant Android app
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Operating system and device
+      placeholder: e.g. Windows 11 desktop, Android tablet, iPhone
+    validations:
+      required: true
+  - type: input
+    id: language_theme
+    attributes:
+      label: Home Assistant language and theme
+      placeholder: e.g. French / default dark theme
+  - type: dropdown
+    id: dashboard_mode
+    attributes:
+      label: Dashboard configuration mode
+      options:
+        - Storage/UI managed
+        - YAML mode
+        - Mixed / unsure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem description
+      description: Describe what is wrong and where it occurs.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest reliable sequence that reproduces the issue.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Change ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Minimal relevant configuration
+      description: Paste only the YAML or configuration needed to reproduce the issue. Redact sensitive information.
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or browser console output
+      description: Paste only relevant messages. Redact sensitive information.
+      render: text
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or screen recording
+      description: Drag and drop visual evidence here when useful.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I reproduced the issue after a normal browser refresh.
+          required: true
+        - label: I removed credentials, PINs, tokens, private keys and unnecessary personal information.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true

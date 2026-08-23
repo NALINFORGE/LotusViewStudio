@@ -1,0 +1,41 @@
+name: Feature request
+about: Suggest an improvement for Lotus View Studio
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests are welcome during beta, but bug fixes and stability take priority until the first stable release.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or limitation
+      description: What workflow or limitation are you trying to improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior or interface you would like.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Mention existing Home Assistant mechanisms or workarounds if relevant.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add mockups, screenshots or examples if they help explain the request.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for a similar request.
+          required: true
+        - label: This request does not contain credentials, PINs, tokens or other sensitive information.
+          required: true
