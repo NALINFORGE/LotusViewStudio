@@ -7,6 +7,8 @@ from homeassistant.components import frontend, panel_custom
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     BRAND_URL,
@@ -25,8 +27,10 @@ from .preferences import LotusVisualPreferences, register_preference_websocket_c
 _FRONTEND_DIR = Path(__file__).parent / "frontend"
 _BRAND_DIR = Path(__file__).parent / "brand"
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Lotus View Studio from YAML (no YAML configuration is required)."""
     return True
 
