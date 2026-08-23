@@ -4,7 +4,7 @@
  * here so every advertised language remains usable.
  */
 
-export const LOTUS_I18N_EXTRA_VERSION = "0.13.0b0";
+export const LOTUS_I18N_EXTRA_VERSION = "0.13.0b4";
 
 export const LOTUS_EXTRA_LANGUAGES = Object.freeze([
   { value: "it", nativeName: "Italiano", englishName: "Italian" },

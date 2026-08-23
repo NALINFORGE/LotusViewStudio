@@ -6,8 +6,8 @@
  * executed once the handle reaches the validation threshold and is released.
  */
 
-import { deepClone, clamp } from "./lotus-core.js?v=0.13.0b0";
-import { lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b0";
+import { deepClone, clamp } from "./lotus-core.js?v=0.13.0b4";
+import { lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b4";
 
 const LOTUS_SLIDE_VERSION = "1.3.0";
 const LOTUS_SLIDE_TYPE = "custom:lotus-slide-card";

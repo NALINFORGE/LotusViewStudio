@@ -1,5 +1,5 @@
 /*
- * Lotus Digicode 1.3.7
+ * Lotus Digicode 1.3.8
  * Configurable keypad / PIN validation card for Lotus View Studio.
  *
  * Three PIN security levels are supported:
@@ -8,10 +8,10 @@
  * 3) application-layer RSA-OAEP transport + server-side salted PIN hash.
  */
 
-import { deepClone, clamp } from "./lotus-core.js?v=0.13.0b0";
-import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b0";
+import { deepClone, clamp } from "./lotus-core.js?v=0.13.0b4";
+import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b4";
 
-const LOTUS_DIGICODE_VERSION = "1.3.7";
+const LOTUS_DIGICODE_VERSION = "1.3.8";
 const LOTUS_DIGICODE_TYPE = "custom:lotus-digicode-card";
 const DIGICODE_SECURITY_MODES = Object.freeze({
   FRONTEND: "frontend_entity",
@@ -1314,6 +1314,7 @@ class LotusDigicodeCardEditor extends HTMLElement {
     this._previewResizeObserver = new ResizeObserver(() => this._layoutPreviewShell());
     this._activeResize = null;
     this._pendingServerPin = "";
+    this._serverActionDirty = false;
     this._serverSecurityStatus = { loaded: false, configured: false, length: 0, mode: null, pin_id: "", error: "" };
     this._serverStatusToken = 0;
     this._lastSaveValiditySignature = "";
@@ -1868,6 +1869,7 @@ class LotusDigicodeCardEditor extends HTMLElement {
       }
       const result = await this._hass.callWS(message);
       this._pendingServerPin = "";
+      this._serverActionDirty = false;
       const input = this.shadowRoot?.querySelector(".lotus-pin-field input");
       if (input) input.value = "";
       this._serverSecurityStatus = {
@@ -1908,6 +1910,28 @@ class LotusDigicodeCardEditor extends HTMLElement {
     }
   }
 
+  _renderSecurityAction(parent) {
+    const block = document.createElement("div");
+    block.className = "security-action";
+    const heading = document.createElement("h4");
+    heading.textContent = lotusT("Action après validation du PIN");
+    const help = document.createElement("p");
+    help.className = "helper";
+    help.textContent = this._usesServerSecurity()
+      ? lotusT("Choisissez l’action avant d’enregistrer le PIN. Le PIN et cette action sont enregistrés ensemble côté serveur.")
+      : lotusT("Cette action est exécutée automatiquement lorsque le code saisi est correct.");
+    block.append(heading, help);
+    this._renderAction(block);
+
+    if (this._usesServerSecurity() && this._serverActionDirty) {
+      const warning = document.createElement("p");
+      warning.className = "security-note warning action-sync-warning";
+      warning.textContent = lotusT("Action modifiée : réenregistrez le PIN et l’action sur le serveur pour appliquer cette modification.");
+      block.appendChild(warning);
+    }
+    parent.appendChild(block);
+  }
+
   _renderSecuritySource(parent) {
     this._nativeSelectField(parent, "security.mode", "Niveau de sécurité du PIN", this._securityMode(), [
       [DIGICODE_SECURITY_MODES.FRONTEND, "Niveau 1 — Entité Home Assistant (compatibilité)"],
@@ -1931,6 +1955,7 @@ class LotusDigicodeCardEditor extends HTMLElement {
         "Ce mode ne permet pas un PIN commençant par 0 et la valeur reste lisible par le frontend Home Assistant.",
       ], "warning");
       this._codeEntity(parent);
+      this._renderSecurityAction(parent);
       return;
     }
 
@@ -1966,6 +1991,7 @@ class LotusDigicodeCardEditor extends HTMLElement {
       parent.appendChild(note);
     }
 
+    this._renderSecurityAction(parent);
     this._passwordField(parent, "PIN à enregistrer côté serveur");
     const button = document.createElement("button");
     button.type = "button";
@@ -2075,6 +2101,11 @@ class LotusDigicodeCardEditor extends HTMLElement {
       status.dataset.kind = "error";
       return;
     }
+    if (this._serverActionDirty) {
+      status.textContent = lotusT("Action modifiée : saisissez de nouveau le PIN puis enregistrez le PIN et l’action sur le serveur.");
+      status.dataset.kind = "warning";
+      return;
+    }
     status.textContent = lotusT(`PIN serveur configuré : ${this._serverSecurityStatus.length} chiffre${this._serverSecurityStatus.length > 1 ? "s" : ""}. Le PIN lui-même n’est jamais renvoyé à l’éditeur. L’aperçu teste ce PIN réel sans exécuter l’action.`);
     status.dataset.kind = "ok";
   }
@@ -2089,7 +2120,10 @@ class LotusDigicodeCardEditor extends HTMLElement {
       form.computeLabel = () => lotusT("Action exécutée lorsque le code est correct");
       form.addEventListener("value-changed", (event) => {
         const value = event.detail?.value?.action;
-        this._commit((config) => { config.action = value && typeof value === "object" ? clone(value) : { action: "none" }; });
+        const nextAction = value && typeof value === "object" ? clone(value) : { action: "none" };
+        if (JSON.stringify(nextAction) === JSON.stringify(this._config.action)) return;
+        if (this._usesServerSecurity()) this._serverActionDirty = true;
+        this._commit((config) => { config.action = nextAction; });
       });
       parent.appendChild(form);
     } else {
@@ -2259,7 +2293,7 @@ class LotusDigicodeCardEditor extends HTMLElement {
     if (!frame || !shell || this._activeResize) return;
     const rect = frame.getBoundingClientRect();
     if (rect.width <= 20 || rect.height <= 20) return;
-    const pad = 42;
+    const pad = 78; // Reserve space for the contextual Edit/Test toolbar.
     const availW = Math.max(60, rect.width - pad * 2);
     const availH = Math.max(90, rect.height - pad * 2);
     const ratio = this._config.design.width / Math.max(1, this._config.design.height);
@@ -2497,13 +2531,6 @@ class LotusDigicodeCardEditor extends HTMLElement {
     this._color(success, "success.color", "Couleur", this._config.success.color, (value) => this._commit((c) => { c.success.color = value; }));
     this._number(success, "success.delay", "Délai avant réinitialisation (ms)", this._config.success.delay, 0, 5000, 50, (value) => this._commit((c) => { c.success.delay = Number(value); }), "box");
     pane.appendChild(success);
-
-    const actionDescription = this._usesServerSecurity()
-      ? "Pour les actions de service/toggle, l’action est exécutée côté serveur après validation du PIN. Après toute modification de cette action, réenregistrez le PIN dans la section Code et sécurité afin de mettre à jour l’action autorisée côté serveur."
-      : "L’action est exécutée automatiquement dès que le dernier chiffre rend le code correct.";
-    const action = this._section("Action Home Assistant", actionDescription);
-    this._renderAction(action);
-    pane.appendChild(action);
 
     const previewTitle = document.createElement("div");
     previewTitle.className = "preview-title";
