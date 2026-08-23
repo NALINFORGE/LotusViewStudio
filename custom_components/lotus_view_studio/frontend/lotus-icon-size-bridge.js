@@ -1,5 +1,5 @@
 /*
- * Lotus View Studio native picture-elements responsive bridge — v0.12.2
+ * Lotus View Studio native picture-elements responsive bridge — v0.13.0b0
  *
  * Lotus Stack is deliberately saved as a native Home Assistant picture-elements
  * card. Native state-icon/state-label elements do not know the logical Lotus
@@ -197,6 +197,6 @@ if (labelClass) installLabelBridge(labelClass);
 else customElements.whenDefined("hui-state-label-element").then(() => installLabelBridge(customElements.get("hui-state-label-element")));
 
 window.LotusVisual = Object.assign(window.LotusVisual || {}, {
-  iconSizeBridge: "0.12.2",
-  stackResponsiveBridge: "0.12.2",
+  iconSizeBridge: "0.13.0b0",
+  stackResponsiveBridge: "0.13.0b0",
 });

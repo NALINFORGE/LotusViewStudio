@@ -1,5 +1,5 @@
-import { registerLotusStackCard } from "./lotus-card-registry.js?v=0.12.2";
-import { lotusDebug, lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.12.2";
+import { registerLotusStackCard } from "./lotus-card-registry.js?v=0.13.0b0";
+import { lotusDebug, lotusLocalizeSelector, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b0";
 
 
 /*

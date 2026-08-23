@@ -9,10 +9,10 @@ import {
   makeIconButton,
   fireEvent,
   lotusTabEdgeBorderPath,
-} from "./lotus-core.js?v=0.12.2";
-import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.12.2";
-import { registerLotusStackCard, registerLotusSlideCard, registerLotusDigicodeCard } from "./lotus-card-registry.js?v=0.12.2";
-import { openLotusTabsEditor } from "./lotus-tabs-editor.js?v=0.12.2";
+} from "./lotus-core.js?v=0.13.0b0";
+import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b0";
+import { registerLotusStackCard, registerLotusSlideCard, registerLotusDigicodeCard } from "./lotus-card-registry.js?v=0.13.0b0";
+import { openLotusTabsEditor } from "./lotus-tabs-editor.js?v=0.13.0b0";
 
 const DEFAULT_LAYOUT = Object.freeze({ x: 2, y: 2, width: 30, height: 18, locked: false, z: 1 });
 

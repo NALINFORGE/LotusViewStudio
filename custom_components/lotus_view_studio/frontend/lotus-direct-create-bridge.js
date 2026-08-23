@@ -1,5 +1,5 @@
 /*
- * Lotus View Studio direct-create bridge — v0.12.2
+ * Lotus View Studio direct-create bridge — v0.13.0b0
  *
  * Goal
  * ----
@@ -203,7 +203,7 @@ function installCaptureBridge() {
     .catch(() => {});
 
   window.LotusVisual = Object.assign(window.LotusVisual || {}, {
-    directCreateBridge: "0.12.2",
+    directCreateBridge: "0.13.0b0",
     directCreateMode: "capture-import-before-dialog",
   });
 }

@@ -1,7 +1,7 @@
 {
   "domain": "lotus_view_studio",
   "name": "Lotus View Studio",
-  "version": "0.12.2",
+  "version": "0.13.0b0",
   "config_flow": true,
   "codeowners": [
     "@maximedub"
@@ -13,10 +13,10 @@
     "panel_custom",
     "websocket_api"
   ],
-  "documentation": "https://github.com/NALINFORGE/LotusViewStudio",
-  "issue_tracker": "https://github.com/NALINFORGE/LotusViewStudio/issues",
   "iot_class": "local_push",
   "integration_type": "service",
   "single_config_entry": true,
-  "requirements": []
+  "requirements": [],
+  "documentation": "https://github.com/NALINFORGE/LotusViewStudio",
+  "issue_tracker": "https://github.com/NALINFORGE/LotusViewStudio/issues"
 }
