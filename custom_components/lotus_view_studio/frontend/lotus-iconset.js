@@ -3,7 +3,7 @@
  * mark without requiring an external custom-icons integration.
  */
 
-const LOTUS_ICONSET_VERSION = "0.13.0b0";
+const LOTUS_ICONSET_VERSION = "0.13.0b3";
 
 // 24x24 monochrome sidebar icon: a simplified Lotus inside a window frame.
 // It follows currentColor so Home Assistant controls selected/unselected colors.

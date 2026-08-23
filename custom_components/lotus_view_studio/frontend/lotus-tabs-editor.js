@@ -5,13 +5,13 @@ import {
   lotusSlugify,
   lotusThemeCss,
   lotusTabEdgeBorderPath,
-} from "./lotus-core.js?v=0.13.0b0";
+} from "./lotus-core.js?v=0.13.0b3";
 import {
   lotusDebug,
   lotusLocalizeSelector,
   lotusSetHass,
   lotusT,
-} from "./lotus-i18n.js?v=0.13.0b0";
+} from "./lotus-i18n.js?v=0.13.0b3";
 
 const LOTUS_VIEW_META_KEY = "lotus_visual";
 const LOTUS_TABS_KEY = "tabs";
