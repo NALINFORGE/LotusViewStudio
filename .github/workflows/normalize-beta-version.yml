@@ -1,0 +1,75 @@
+name: Normalize beta version references
+
+on:
+  push:
+    branches:
+      - fix/version-cache-busting-b3
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          ref: fix/version-cache-busting-b3
+
+      - name: Normalize integration version references
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path("custom_components/lotus_view_studio")
+          allowed_suffixes = {".js", ".py", ".json"}
+          old_versions = ("0.13.0b0", "0.13.0b1", "0.13.0b2")
+          new_version = "0.13.0b3"
+          changed = []
+
+          for path in sorted(root.rglob("*")):
+              if not path.is_file() or path.suffix not in allowed_suffixes:
+                  continue
+              text = path.read_text(encoding="utf-8")
+              updated = text
+              for old_version in old_versions:
+                  updated = updated.replace(old_version, new_version)
+              if updated != text:
+                  path.write_text(updated, encoding="utf-8")
+                  changed.append(str(path))
+
+          print("Updated files:")
+          for path in changed:
+              print(f"- {path}")
+
+          leftovers = []
+          for path in sorted(root.rglob("*")):
+              if not path.is_file() or path.suffix not in allowed_suffixes:
+                  continue
+              text = path.read_text(encoding="utf-8")
+              for old_version in old_versions:
+                  if old_version in text:
+                      leftovers.append(f"{path}: {old_version}")
+
+          if leftovers:
+              raise SystemExit("Old version references remain:\n" + "\n".join(leftovers))
+          PY
+
+      - name: Check diff
+        run: git diff --check
+
+      - name: Commit normalized versions
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/lotus_view_studio
+          if git diff --cached --quiet; then
+            echo "No version references required changes."
+            exit 0
+          fi
+          git commit -m "Normalize 0.13.0b3 version references"
+          git push origin HEAD:fix/version-cache-busting-b3
