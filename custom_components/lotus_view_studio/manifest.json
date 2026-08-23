@@ -1,7 +1,7 @@
 {
   "domain": "lotus_view_studio",
   "name": "Lotus View Studio",
-  "version": "0.13.0b0",
+  "version": "0.13.0b1",
   "config_flow": true,
   "codeowners": [
     "@maximedub"
