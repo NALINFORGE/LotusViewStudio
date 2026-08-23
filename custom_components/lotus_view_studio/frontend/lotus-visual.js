@@ -25,6 +25,7 @@ await import(`./lotus-slide-card.js?v=${LOTUS_VISUAL_VERSION}`);
 // 0.13.0b1 keeps the stable 1.3.0 runtime and applies editor-only UX
 // improvements after the custom element has been registered.
 await import(`./lotus-slide-editor-b1.js?v=${LOTUS_VISUAL_VERSION}`);
+await import(`./lotus-slide-editor-direct-b1.js?v=${LOTUS_VISUAL_VERSION}`);
 await import(`./lotus-digicode-card.js?v=${LOTUS_VISUAL_VERSION}`);
 if (!customElements.get("lotus-layers-card")) {
   await import(`./lotus-layers.js?v=${LOTUS_VISUAL_VERSION}`);
