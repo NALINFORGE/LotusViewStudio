@@ -1,0 +1,55 @@
+name: Restore manager for b4 refactor
+
+on:
+  push:
+    branches:
+      - refactor/single-version-source-b4
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refactor/single-version-source-b4
+          fetch-depth: 0
+
+      - name: Restore manager from master and apply version-only changes
+        shell: python
+        run: |
+          import subprocess
+          from pathlib import Path
+
+          path = Path("custom_components/lotus_view_studio/frontend/lotus-visual-manager.js")
+          original = subprocess.check_output(
+              ["git", "show", f"origin/master:{path.as_posix()}"], text=True
+          )
+          original = original.replace(
+              '} from "./lotus-core.js?v=0.13.0b3";',
+              '} from "./lotus-core.js";',
+          )
+          original = original.replace(
+              '} from "./lotus-i18n.js?v=0.13.0b3";',
+              '} from "./lotus-i18n.js";',
+          )
+          original = original.replace(
+              'const LOTUS_BRAND_ICON_URL = `/lotus_view_studio_brand/icon.png?v=${LOTUS_VISUAL_VERSION}`;',
+              'const LOTUS_BRAND_ICON_URL = LOTUS_VISUAL_VERSION === "dev"\n'
+              '  ? "/lotus_view_studio_brand/icon.png"\n'
+              '  : `/lotus_view_studio_brand_v/${encodeURIComponent(LOTUS_VISUAL_VERSION)}/icon.png`;',
+          )
+          path.write_text(original, encoding="utf-8")
+
+      - name: Commit restored manager
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/lotus_view_studio/frontend/lotus-visual-manager.js
+          git diff --cached --check
+          git commit -m "Limit manager changes to version architecture"
+          git push origin HEAD:refactor/single-version-source-b4
