@@ -1,6 +1,6 @@
 import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";
 /*
- * Lotus View Studio edit-dialog bridge — vcurrent package
+ * Lotus View Studio edit-dialog bridge
  *
  * Home Assistant's native hui-dialog-edit-card owns two columns on desktop:
  *   - .element-editor  (ha-scrollbar)

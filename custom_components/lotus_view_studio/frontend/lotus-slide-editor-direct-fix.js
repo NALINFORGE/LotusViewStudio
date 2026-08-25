@@ -1,4 +1,4 @@
-/* Refinements for the current package direct Lotus Slide preview editor. */
+/* Refinements for the direct Lotus Slide preview editor. */
 
 import { lotusT } from "./lotus-i18n.js";
 

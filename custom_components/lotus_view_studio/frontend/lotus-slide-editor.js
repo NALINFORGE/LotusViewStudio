@@ -1,5 +1,5 @@
 /*
- * Lotus Slide editor UX patch for Lotus View Studio current package.
+ * Lotus Slide editor UX patch for Lotus View Studio.
  *
  * Goals:
  * - allow each side/end position to explicitly have no icon or image;

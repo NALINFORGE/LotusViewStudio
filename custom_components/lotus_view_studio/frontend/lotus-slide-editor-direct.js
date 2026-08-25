@@ -1,5 +1,5 @@
 /*
- * Lotus Slide direct preview editor — current package.
+ * Lotus Slide direct preview editor.
  *
  * The live preview is also a context selector: clicking an element reveals only
  * the relevant configuration section. Selected visual elements can be resized

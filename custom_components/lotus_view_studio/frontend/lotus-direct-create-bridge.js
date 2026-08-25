@@ -1,6 +1,6 @@
 import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";
 /*
- * Lotus View Studio direct-create bridge — vcurrent package
+ * Lotus View Studio direct-create bridge
  *
  * Goal
  * ----

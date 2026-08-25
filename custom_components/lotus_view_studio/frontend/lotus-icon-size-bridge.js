@@ -1,6 +1,6 @@
 import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";
 /*
- * Lotus View Studio native picture-elements responsive bridge — vcurrent package
+ * Lotus View Studio native picture-elements responsive bridge
  *
  * Lotus Stack is deliberately saved as a native Home Assistant picture-elements
  * card. Native state-icon/state-label elements do not know the logical Lotus

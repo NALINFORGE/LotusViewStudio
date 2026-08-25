@@ -1,6 +1,6 @@
 import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";
 /*
- * Lotus View Studio native picture-elements image-fit bridge — vcurrent package
+ * Lotus View Studio native picture-elements image-fit bridge
  *
  * Home Assistant's hui-image component supports fitMode (cover/contain/fill),
  * but hui-image-element currently does not forward such a property to it.
