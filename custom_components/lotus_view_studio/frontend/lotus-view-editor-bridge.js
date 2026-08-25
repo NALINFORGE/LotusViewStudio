@@ -1,4 +1,4 @@
-import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b3";
+import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b4";
 
 const LOTUS_VIEW_TYPE = "custom:lotus-visual-layout";
 const LOTUS_VIEW_LABEL = "Lotus View Studio";
