@@ -20,6 +20,8 @@ from .const import (
     PANEL_PATH,
     PANEL_TITLE,
     URL_BASE,
+    VERSIONED_BRAND_URL,
+    VERSIONED_URL_BASE,
 )
 from .digicode_security import DigicodeSecurityManager, register_websocket_commands
 from .preferences import LotusVisualPreferences, register_preference_websocket_commands
@@ -54,8 +56,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     data = hass.data.setdefault(DOMAIN, {})
     package_version = _package_version()
-    versioned_url_base = f"{URL_BASE}/{package_version}"
-    versioned_brand_url = f"{BRAND_URL}/{package_version}"
+    versioned_url_base = f"{VERSIONED_URL_BASE}/{package_version}"
+    versioned_brand_url = f"{VERSIONED_BRAND_URL}/{package_version}"
     module_url = f"{versioned_url_base}/lotus-visual.js"
 
     if not data.get("digicode_security"):
@@ -72,8 +74,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     registered_versions = data.setdefault("static_versions", set())
     if package_version not in registered_versions:
         static_paths = [
-            # The package version is part of the URL. All relative ES-module
-            # imports therefore share the same cache namespace.
+            # Versioned routes use their own namespace, so they never overlap
+            # compatibility routes left by an earlier Lotus release.
             StaticPathConfig(versioned_url_base, str(_FRONTEND_DIR), cache_headers=True),
             StaticPathConfig(versioned_brand_url, str(_BRAND_DIR), cache_headers=True),
         ]
