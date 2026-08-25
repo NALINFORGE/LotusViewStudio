@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - refactor/single-version-source-b4
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,212 +18,11 @@ jobs:
         with:
           ref: refactor/single-version-source-b4
 
-      - name: Refactor package version handling
-        shell: bash
-        run: |
-          git mv custom_components/lotus_view_studio/frontend/lotus-slide-editor-b1.js custom_components/lotus_view_studio/frontend/lotus-slide-editor.js
-          git mv custom_components/lotus_view_studio/frontend/lotus-slide-editor-direct-b1.js custom_components/lotus_view_studio/frontend/lotus-slide-editor-direct.js
-          git mv custom_components/lotus_view_studio/frontend/lotus-slide-editor-direct-fix-b1.js custom_components/lotus_view_studio/frontend/lotus-slide-editor-direct-fix.js
+      - name: Apply single-version refactor
+        run: python scripts/refactor_version_b4.py
 
-          python - <<'PY'
-          from pathlib import Path
-          import json
-          import re
-
-          component = Path('custom_components/lotus_view_studio')
-          frontend = component / 'frontend'
-
-          manifest_path = component / 'manifest.json'
-          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-          manifest['version'] = '0.13.0b4'
-          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-
-          const_path = component / 'const.py'
-          const = const_path.read_text(encoding='utf-8')
-          const = re.sub(r'^VERSION\s*=.*\n', '', const, flags=re.MULTILINE)
-          const = re.sub(r'^MODULE_URL\s*=.*\n', '', const, flags=re.MULTILINE)
-          const_path.write_text(const, encoding='utf-8')
-
-          init_path = component / '__init__.py'
-          init = init_path.read_text(encoding='utf-8')
-          init = init.replace('from inspect import signature\nfrom pathlib import Path\n', 'import json\nfrom inspect import signature\nfrom pathlib import Path\n')
-          init = init.replace('    MODULE_URL,\n', '')
-          init = init.replace(
-              '_FRONTEND_DIR = Path(__file__).parent / "frontend"\n_BRAND_DIR = Path(__file__).parent / "brand"\n',
-              '_COMPONENT_DIR = Path(__file__).parent\n_FRONTEND_DIR = _COMPONENT_DIR / "frontend"\n_BRAND_DIR = _COMPONENT_DIR / "brand"\n_MANIFEST_PATH = _COMPONENT_DIR / "manifest.json"\n\n\ndef _package_version() -> str:\n    """Return the integration version declared by manifest.json."""\n    manifest = json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))\n    version = str(manifest.get("version", "")).strip()\n    if not version:\n        raise ValueError("Lotus View Studio manifest.json does not declare a version")\n    return version\n'
-          )
-          init = init.replace(
-              '    data = hass.data.setdefault(DOMAIN, {})\n',
-              '    data = hass.data.setdefault(DOMAIN, {})\n    package_version = _package_version()\n    versioned_url_base = f"{URL_BASE}/{package_version}"\n    versioned_brand_url = f"{BRAND_URL}/{package_version}"\n    module_url = f"{versioned_url_base}/lotus-visual.js"\n'
-          )
-          old_static = '''            [
-                StaticPathConfig(URL_BASE, str(_FRONTEND_DIR), cache_headers=False),
-                StaticPathConfig(BRAND_URL, str(_BRAND_DIR), cache_headers=False),
-                # Compatibility aliases for browser caches / manually registered
-                # resources from Lotus Visual releases prior to 0.12.0.
-                StaticPathConfig(LEGACY_URL_BASE, str(_FRONTEND_DIR), cache_headers=False),
-                StaticPathConfig(LEGACY_BRAND_URL, str(_BRAND_DIR), cache_headers=False),
-            ]
-'''
-          new_static = '''            [
-                # The package version is part of the URL path. Relative ES-module
-                # imports therefore inherit the same immutable cache namespace.
-                StaticPathConfig(versioned_url_base, str(_FRONTEND_DIR), cache_headers=True),
-                StaticPathConfig(versioned_brand_url, str(_BRAND_DIR), cache_headers=True),
-                # Unversioned aliases remain available only for compatibility.
-                StaticPathConfig(URL_BASE, str(_FRONTEND_DIR), cache_headers=False),
-                StaticPathConfig(BRAND_URL, str(_BRAND_DIR), cache_headers=False),
-                StaticPathConfig(LEGACY_URL_BASE, str(_FRONTEND_DIR), cache_headers=False),
-                StaticPathConfig(LEGACY_BRAND_URL, str(_BRAND_DIR), cache_headers=False),
-            ]
-'''
-          if old_static not in init:
-              raise SystemExit('Static path block not found in __init__.py')
-          init = init.replace(old_static, new_static)
-          init = init.replace('frontend.add_extra_js_url(hass, MODULE_URL)', 'frontend.add_extra_js_url(hass, module_url)')
-          init = init.replace('"module_url": MODULE_URL,', '"module_url": module_url,')
-          init = init.replace('data[entry.entry_id] = {"module_url": MODULE_URL}', 'data[entry.entry_id] = {"module_url": module_url}')
-          old_unload = '''    try:
-        frontend.remove_extra_js_url(hass, MODULE_URL)
-    except (KeyError, ValueError):
-        pass
-    hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-'''
-          new_unload = '''    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
-    module_url = entry_data.get("module_url")
-    if module_url:
-        try:
-            frontend.remove_extra_js_url(hass, module_url)
-        except (KeyError, ValueError):
-            pass
-    hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-'''
-          if old_unload not in init:
-              raise SystemExit('Unload block not found in __init__.py')
-          init = init.replace(old_unload, new_unload)
-          init_path.write_text(init, encoding='utf-8')
-
-          (frontend / 'lotus-version.js').write_text('''/* Package version derived from the versioned static URL registered by Home Assistant. */
-const moduleUrl = new URL(import.meta.url);
-const pathParts = moduleUrl.pathname.split("/").filter(Boolean);
-const pathVersion = decodeURIComponent(pathParts.at(-2) || "");
-const queryVersion = String(moduleUrl.searchParams.get("v") || "").trim();
-const candidate = queryVersion || pathVersion;
-const VERSION_PATTERN = /^\\d+\\.\\d+\\.\\d+[0-9A-Za-z.+-]*$/;
-
-export const LOTUS_PACKAGE_VERSION = VERSION_PATTERN.test(candidate) ? candidate : "dev";
-export const LOTUS_PACKAGE_IS_VERSIONED = LOTUS_PACKAGE_VERSION !== "dev";
-''', encoding='utf-8')
-
-          for path in frontend.glob('*.js'):
-              text = path.read_text(encoding='utf-8')
-              text = re.sub(r'\?v=0\.13\.0b3', '', text)
-              text = re.sub(r'\?v=\$\{[A-Z0-9_]+\}', '', text)
-              text = text.replace('0.13.0b3', 'current package')
-              path.write_text(text, encoding='utf-8')
-
-          def prepend_version_import(filename):
-              path = frontend / filename
-              text = path.read_text(encoding='utf-8')
-              line = 'import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";\n'
-              if line not in text:
-                  text = line + text
-              path.write_text(text, encoding='utf-8')
-
-          for filename in [
-              'lotus-core.js',
-              'lotus-i18n.js',
-              'lotus-i18n-extra.js',
-              'lotus-i18n-europe.js',
-              'lotus-iconset.js',
-              'lotus-direct-create-bridge.js',
-              'lotus-edit-dialog-bridge.js',
-              'lotus-icon-size-bridge.js',
-              'lotus-image-fit-bridge.js',
-          ]:
-              prepend_version_import(filename)
-
-          replacements = {
-              'lotus-core.js': [
-                  ('export const LOTUS_VISUAL_VERSION = "current package";', 'export const LOTUS_VISUAL_VERSION = LOTUS_PACKAGE_VERSION;'),
-              ],
-              'lotus-i18n.js': [
-                  ('export const LOTUS_I18N_VERSION = "current package";', 'export const LOTUS_I18N_VERSION = LOTUS_PACKAGE_VERSION;'),
-              ],
-              'lotus-i18n-extra.js': [
-                  ('export const LOTUS_I18N_EXTRA_VERSION = "current package";', 'export const LOTUS_I18N_EXTRA_VERSION = LOTUS_PACKAGE_VERSION;'),
-              ],
-              'lotus-i18n-europe.js': [
-                  ('export const LOTUS_EUROPE_VERSION = "current package";', 'export const LOTUS_EUROPE_VERSION = LOTUS_PACKAGE_VERSION;'),
-              ],
-              'lotus-iconset.js': [
-                  ('const LOTUS_ICONSET_VERSION = "current package";', 'const LOTUS_ICONSET_VERSION = LOTUS_PACKAGE_VERSION;'),
-              ],
-              'lotus-direct-create-bridge.js': [
-                  ('directCreateBridge: "current package"', 'directCreateBridge: LOTUS_PACKAGE_VERSION'),
-              ],
-              'lotus-edit-dialog-bridge.js': [
-                  ('editDialogBridge: "current package"', 'editDialogBridge: LOTUS_PACKAGE_VERSION'),
-              ],
-              'lotus-icon-size-bridge.js': [
-                  ('iconSizeBridge: "current package"', 'iconSizeBridge: LOTUS_PACKAGE_VERSION'),
-                  ('stackResponsiveBridge: "current package"', 'stackResponsiveBridge: LOTUS_PACKAGE_VERSION'),
-              ],
-              'lotus-image-fit-bridge.js': [
-                  ('imageFitBridge: "current package"', 'imageFitBridge: LOTUS_PACKAGE_VERSION'),
-              ],
-          }
-          for filename, pairs in replacements.items():
-              path = frontend / filename
-              text = path.read_text(encoding='utf-8')
-              for old, new in pairs:
-                  if old not in text:
-                      raise SystemExit(f'Expected version diagnostic not found in {filename}: {old}')
-                  text = text.replace(old, new)
-              path.write_text(text, encoding='utf-8')
-
-          visual_path = frontend / 'lotus-visual.js'
-          visual = visual_path.read_text(encoding='utf-8')
-          bootstrap_block = '''// Bootstrap version is intentionally local: the first import must itself be
-// cache-busted. A static import of lotus-core.js could otherwise survive an
-// integration upgrade in the browser ESM module map.
-const LOTUS_VISUAL_BOOTSTRAP_VERSION = "current package";
-'''
-          if bootstrap_block not in visual:
-              raise SystemExit('Bootstrap version block not found in lotus-visual.js')
-          visual = visual.replace(bootstrap_block, '')
-          visual = re.sub(r'await import\(`(\./[^`]+)`\);', r'await import("\1");', visual)
-          visual = re.sub(r'await import\(`(\./[^`]+)`\)', r'await import("\1")', visual)
-          visual = visual.replace('lotus-slide-editor-b1.js', 'lotus-slide-editor.js')
-          visual = visual.replace('lotus-slide-editor-direct-b1.js', 'lotus-slide-editor-direct.js')
-          visual = visual.replace('lotus-slide-editor-direct-fix-b1.js', 'lotus-slide-editor-direct-fix.js')
-          visual = visual.replace('// current package keeps the stable 1.3.0 runtime and the editor UX refinements\n// introduced during the 0.13.0 beta cycle.\n', '// Load the stable Lotus Slide runtime and its visual editor refinements.\n')
-          visual_path.write_text(visual, encoding='utf-8')
-
-          manager_path = frontend / 'lotus-visual-manager.js'
-          manager = manager_path.read_text(encoding='utf-8')
-          old_brand = 'const LOTUS_BRAND_ICON_URL = `/lotus_view_studio_brand/icon.png`;'
-          new_brand = 'const LOTUS_BRAND_ICON_URL = LOTUS_VISUAL_VERSION === "dev"\n  ? "/lotus_view_studio_brand/icon.png"\n  : `/lotus_view_studio_brand/${encodeURIComponent(LOTUS_VISUAL_VERSION)}/icon.png`;'
-          if old_brand not in manager:
-              raise SystemExit('Brand URL declaration not found in lotus-visual-manager.js')
-          manager_path.write_text(manager.replace(old_brand, new_brand), encoding='utf-8')
-
-          errors = []
-          for path in sorted(frontend.glob('*.js')):
-              text = path.read_text(encoding='utf-8')
-              if re.search(r'0\.13\.0b\d+', text):
-                  errors.append(f'{path}: package beta version remains hardcoded')
-              if '?v=' in text:
-                  errors.append(f'{path}: manual ?v= cache busting remains')
-              if re.search(r'-b\d+\.js$', path.name):
-                  errors.append(f'{path}: beta suffix remains in filename')
-          if re.search(r'^VERSION\s*=', const_path.read_text(encoding='utf-8'), flags=re.MULTILINE):
-              errors.append('const.py still duplicates VERSION')
-          if errors:
-              raise SystemExit('Version refactor validation failed:\n' + '\n'.join(errors))
-          PY
-
-          git diff --check
+      - name: Verify diff
+        run: git diff --check
 
       - name: Commit component refactor
         shell: bash
@@ -230,5 +30,9 @@ const LOTUS_VISUAL_BOOTSTRAP_VERSION = "current package";
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add custom_components/lotus_view_studio
+          if git diff --cached --quiet; then
+            echo "No component changes to commit."
+            exit 0
+          fi
           git commit -m "Use manifest as single package version source"
           git push origin HEAD:refactor/single-version-source-b4
