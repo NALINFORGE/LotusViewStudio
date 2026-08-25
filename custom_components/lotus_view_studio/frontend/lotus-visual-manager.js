@@ -17,7 +17,7 @@ import {
 
 const LOTUS_BRAND_ICON_URL = LOTUS_VISUAL_VERSION === "dev"
   ? "/lotus_view_studio_brand/icon.png"
-  : `/lotus_view_studio_brand/${encodeURIComponent(LOTUS_VISUAL_VERSION)}/icon.png`;
+  : `/lotus_view_studio_brand_v/${encodeURIComponent(LOTUS_VISUAL_VERSION)}/icon.png`;
 const DEFAULT_VIEW_ICON = "mdi:view-dashboard-outline";
 const LOTUS_VIEW_TYPE = "custom:lotus-visual-layout";
 
@@ -240,347 +240,232 @@ class LotusVisualManager extends HTMLElement {
     const title = document.createElement("div");
     title.className = "dashboard-title";
     title.textContent = dashboard.title || path || "Dashboard";
-    const meta = document.createElement("div");
-    meta.className = "dashboard-path";
-    meta.textContent = `/${path}`;
-    name.append(title, meta);
+    const pathEl = document.createElement("div");
+    pathEl.className = "dashboard-path";
+    pathEl.textContent = `/${path}`;
+    name.append(title, pathEl);
+
     const actions = document.createElement("div");
     actions.className = "actions";
     actions.append(
       makeIconButton({ icon: "mdi:open-in-new", title: "Ouvrir le dashboard", onClick: () => this._openDashboard(path) }),
-      makeIconButton({ icon: "mdi:tab-plus", title: "Ajouter une vue Lotus", onClick: () => this._showCreateView(dashboard) }),
+      makeIconButton({ icon: "mdi:plus-box-outline", title: "Ajouter une vue Lotus", onClick: () => this._showCreateView(dashboard) }),
     );
     head.append(icon, name, actions);
-    section.appendChild(head);
+    section.append(head);
 
     const views = document.createElement("div");
     views.className = "views";
-    const viewList = Array.isArray(config.views) ? config.views : [];
-    if (!viewList.length) {
+    const configViews = Array.isArray(config.views) ? config.views : [];
+    if (!configViews.length) {
       const row = document.createElement("div");
       row.className = "view";
       row.textContent = config._lotus_error ? lotusT("Configuration inaccessible") : lotusT("Aucune vue");
-      views.appendChild(row);
+      views.append(row);
     } else {
-      viewList.forEach((view, index) => views.appendChild(this._renderView(dashboard, config, view, index)));
+      configViews.forEach((view, index) => views.append(this._renderView(dashboard, view, index)));
     }
-    section.appendChild(views);
+    section.append(views);
     return section;
   }
 
-  _renderView(dashboard, config, view, index) {
-    const isLotus = view?.type === LOTUS_VIEW_TYPE;
+  _renderView(dashboard, view, index) {
     const row = document.createElement("div");
+    const isLotus = view?.type === LOTUS_VIEW_TYPE;
     row.className = `view${isLotus ? " lotus" : ""}`;
-    const icon = isLotus ? document.createElement("img") : document.createElement("ha-icon");
+    const iconValue = isLotus ? "" : String(view?.icon || DEFAULT_VIEW_ICON);
     if (isLotus) {
-      icon.className = "view-brand-logo";
-      icon.src = LOTUS_BRAND_ICON_URL;
-      icon.alt = "";
-      icon.setAttribute("aria-hidden", "true");
+      const brandLogo = document.createElement("img");
+      brandLogo.className = "view-brand-logo";
+      brandLogo.src = LOTUS_BRAND_ICON_URL;
+      brandLogo.alt = "";
+      brandLogo.setAttribute("aria-hidden", "true");
+      row.append(brandLogo);
     } else {
-      icon.setAttribute("icon", view?.icon || DEFAULT_VIEW_ICON);
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", iconValue);
+      row.append(icon);
     }
+
     const name = document.createElement("div");
     name.className = "view-name";
     const title = document.createElement("div");
     title.className = "view-title";
-    title.textContent = view?.title || `${lotusT("Vue")} ${index + 1}`;
+    title.textContent = view?.title || view?.path || `${lotusT("Vue")} ${index + 1}`;
     const meta = document.createElement("div");
     meta.className = "view-meta";
-    meta.textContent = `${view?.path || ""}${isLotus ? " · Lotus View Studio" : ""}`;
+    meta.textContent = isLotus ? lotusT("Vue Lotus") : (view?.type || "masonry");
     name.append(title, meta);
+
     const actions = document.createElement("div");
     actions.className = "actions";
-    actions.append(
-      makeIconButton({ icon: "mdi:open-in-new", title: "Ouvrir cette vue", onClick: () => this._openDashboard(dashboard.url_path, view?.path) }),
-    );
+    actions.append(makeIconButton({ icon: "mdi:open-in-new", title: "Ouvrir cette vue", onClick: () => this._openDashboard(dashboard.url_path, view?.path) }));
     if (!isLotus) {
-      actions.appendChild(makeIconButton({
-        icon: "lotus:lotus",
-        title: "Convertir cette vue en vue Lotus View Studio",
-        onClick: () => this._convertView(dashboard, config, index),
-      }));
+      actions.append(makeIconButton({ icon: "mdi:sprout", title: "Convertir cette vue en vue Lotus View Studio", onClick: () => this._convertView(dashboard, index) }));
     }
-    row.append(icon, name, actions);
+    row.append(name, actions);
     return row;
   }
 
+  async _saveConfig(path, config) {
+    if (!this._hass) throw new Error(lotusT("Home Assistant indisponible"));
+    await this._hass.callWS({ type: "lovelace/config/save", url_path: path, config });
+    this._configs.set(path, config);
+  }
+
   _openDashboard(path, viewPath = "") {
-    if (!path) return;
-    const suffix = viewPath ? `/${encodeURIComponent(viewPath)}` : "";
-    window.location.assign(`/${encodeURIComponent(path)}${suffix}`);
-  }
-
-  _uniquePath(base, existing) {
-    const taken = new Set(existing.filter(Boolean));
-    if (!taken.has(base)) return base;
-    let index = 2;
-    while (taken.has(`${base}-${index}`)) index += 1;
-    return `${base}-${index}`;
-  }
-
-  _showLanguageDialog() {
-    const existing = this.shadowRoot.querySelector(".modal-backdrop.language-dialog");
-    if (existing) existing.remove();
-
-    const backdrop = document.createElement("div");
-    backdrop.className = "modal-backdrop language-dialog";
-    const modal = document.createElement("section");
-    modal.className = "modal";
-    modal.dir = lotusGetTextDirection();
-    const head = document.createElement("header");
-    head.className = "modal-head";
-    const heading = document.createElement("strong");
-    heading.textContent = lotusT("Langue de l’interface");
-    const closeButton = makeIconButton({ icon: "mdi:close", title: "Fermer" });
-    head.append(heading, closeButton);
-
-    const body = document.createElement("div");
-    body.className = "modal-body";
-    const help = document.createElement("div");
-    help.className = "notice";
-    help.textContent = lotusT("En mode automatique, Lotus View Studio utilise la langue de l’utilisateur connecté à Home Assistant. Une langue non disponible utilise l’anglais.");
-
-    const label = document.createElement("label");
-    label.textContent = lotusT("Langue");
-    const select = document.createElement("select");
-    select.setAttribute("aria-label", lotusT("Langue de l’interface"));
-    const automatic = lotusGetAutomaticLanguage(this._hass).toUpperCase();
-    for (const language of LOTUS_LANGUAGES) {
-      const option = document.createElement("option");
-      option.value = language.value;
-      option.dir = language.value === "ar" ? "rtl" : "ltr";
-      option.textContent = language.value === "auto"
-        ? `${lotusT(language.nativeName)} (${automatic})`
-        : language.nativeName;
-      select.appendChild(option);
-    }
-    select.value = lotusGetLanguagePreference();
-    const updateDialogDirection = () => {
-      const previewLanguage = select.value === "auto" ? lotusGetAutomaticLanguage(this._hass) : select.value;
-      modal.dir = lotusGetTextDirection(previewLanguage);
-      select.dir = lotusGetTextDirection(previewLanguage);
-    };
-    updateDialogDirection();
-    select.addEventListener("change", updateDialogDirection);
-    label.appendChild(select);
-
-    const perUser = document.createElement("div");
-    perUser.className = "notice";
-    perUser.textContent = lotusT("Ce choix est enregistré pour votre utilisateur Home Assistant et ne modifie pas le YAML des cartes.");
-    body.append(help, label, perUser);
-
-    const foot = document.createElement("footer");
-    foot.className = "modal-foot";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "text-button";
-    cancel.textContent = lotusT("Annuler");
-    const apply = document.createElement("button");
-    apply.type = "button";
-    apply.className = "text-button primary";
-    apply.textContent = lotusT("Appliquer");
-    foot.append(cancel, apply);
-    modal.append(head, body, foot);
-    backdrop.appendChild(modal);
-    this.shadowRoot.appendChild(backdrop);
-
-    const close = () => backdrop.remove();
-    closeButton.addEventListener("click", close);
-    cancel.addEventListener("click", close);
-    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) close(); });
-    apply.addEventListener("click", async () => {
-      apply.disabled = true;
-      try {
-        await lotusSetLanguagePreference(this._hass, select.value);
-        window.location.reload();
-      } catch (error) {
-        apply.disabled = false;
-        this._error = lotusT(`Impossible d’enregistrer la langue : ${error?.message || error}`);
-        close();
-        this._renderContent();
-      }
-    });
+    const suffix = viewPath ? `/${viewPath}` : "";
+    history.pushState(null, "", `/${path}${suffix}`);
+    window.dispatchEvent(new Event("location-changed"));
   }
 
   _showCreateDashboard() {
-    this._showForm({
-      title: lotusT("Nouveau dashboard Lotus"),
-      fields: [
-        { key: "title", label: lotusT("Nom"), value: "Lotus View Studio" },
-        { key: "path", label: lotusT("Chemin"), value: this._uniquePath("lotus-dashboard", this._dashboards.map((item) => item.url_path)) },
-        { key: "view", label: lotusT("Première vue"), value: lotusT("Accueil") },
-      ],
-      onSubmit: (values) => this._createDashboard(values),
-    });
+    const backdrop = this._modal(lotusT("Nouveau dashboard Lotus"));
+    const body = backdrop.querySelector(".modal-body");
+    const titleInput = document.createElement("input");
+    titleInput.placeholder = lotusT("Nom");
+    titleInput.value = "Lotus";
+    const pathInput = document.createElement("input");
+    pathInput.placeholder = lotusT("Chemin");
+    pathInput.value = "lotus";
+    const viewTitle = document.createElement("input");
+    viewTitle.placeholder = lotusT("Première vue");
+    viewTitle.value = lotusT("Accueil");
+    body.append(this._field("Nom", titleInput), this._field("Chemin", pathInput), this._field("Première vue", viewTitle));
+    const primary = backdrop.querySelector(".text-button.primary");
+    primary.textContent = lotusT("Créer");
+    primary.onclick = async () => {
+      const title = titleInput.value.trim() || "Lotus";
+      const path = lotusSlugify(pathInput.value || title);
+      if (!path) return;
+      primary.disabled = true;
+      try {
+        await this._hass.callWS({ type: "lovelace/dashboards/create", url_path: path, title, icon: "mdi:view-dashboard-outline", show_in_sidebar: true, require_admin: false });
+        const config = { views: [{ type: LOTUS_VIEW_TYPE, title: viewTitle.value.trim() || lotusT("Accueil"), path: "home", lotus: { layers: [] }, cards: [] }] };
+        await this._saveConfig(path, config);
+        backdrop.remove();
+        await this._refresh();
+      } catch (error) {
+        alert(lotusT(`Création impossible : ${error?.message || error}`));
+        primary.disabled = false;
+      }
+    };
   }
 
   _showCreateView(dashboard) {
-    const config = this._configs.get(dashboard.url_path) || { views: [] };
-    const existing = (config.views || []).map((view) => view?.path);
-    this._showForm({
-      title: `${lotusT("Nouvelle vue")} · ${dashboard.title || dashboard.url_path}`,
-      fields: [
-        { key: "title", label: lotusT("Nom"), value: lotusT("Nouvelle vue") },
-        { key: "path", label: lotusT("Chemin"), value: this._uniquePath("nouvelle-vue", existing) },
-      ],
-      onSubmit: (values) => this._createView(dashboard, values),
-    });
-  }
-
-  _showForm({ title, fields, onSubmit }) {
-    const backdrop = document.createElement("div");
-    backdrop.className = "modal-backdrop";
-    const modal = document.createElement("section");
-    modal.className = "modal";
-    modal.dir = lotusGetTextDirection();
-    const head = document.createElement("header");
-    head.className = "modal-head";
-    const heading = document.createElement("strong");
-    heading.textContent = title;
-    const closeButton = makeIconButton({ icon: "mdi:close", title: "Fermer" });
-    head.append(heading, closeButton);
-
-    const body = document.createElement("form");
-    body.className = "modal-body";
-    let values = Object.fromEntries(fields.map((field) => [field.key, field.value || ""]));
-    const fieldMap = new Map(fields.map((field) => [field.key, field]));
-
-    if (customElements.get("ha-form")) {
-      const form = document.createElement("ha-form");
-      form.hass = this._hass;
-      form.data = values;
-      form.schema = fields.map((field) => ({
-        name: field.key,
-        required: true,
-        selector: {
-          text: {
-            placeholder: field.key === "path" ? "ex. salon" : undefined,
-          },
-        },
-      }));
-      form.computeLabel = (schema) => fieldMap.get(schema.name)?.label || schema.name;
-      form.addEventListener("value-changed", (event) => {
-        values = { ...event.detail.value };
-      });
-      body.appendChild(form);
-    } else {
-      // Repli de compatibilité uniquement si le formulaire HA n'est pas chargé.
-      const inputs = new Map();
-      for (const field of fields) {
-        const label = document.createElement("label");
-        label.textContent = field.label;
-        const input = document.createElement("input");
-        input.value = field.value || "";
-        input.autocomplete = "off";
-        if (field.key === "path") input.spellcheck = false;
-        inputs.set(field.key, input);
-        label.appendChild(input);
-        body.appendChild(label);
-      }
-      const syncFallbackValues = () => {
-        values = Object.fromEntries(
-          [...inputs.entries()].map(([key, input]) => [key, input.value]),
-        );
-      };
-      body.addEventListener("input", syncFallbackValues);
-    }
-
-    const foot = document.createElement("footer");
-    foot.className = "modal-foot";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "text-button";
-    cancel.textContent = lotusT("Annuler");
-    const submit = document.createElement("button");
-    submit.type = "submit";
-    submit.className = "text-button primary";
-    submit.textContent = lotusT("Créer");
-    foot.append(cancel, submit);
-    body.appendChild(foot);
-    modal.append(head, body);
-    backdrop.appendChild(modal);
-    this.shadowRoot.appendChild(backdrop);
-
-    const close = () => backdrop.remove();
-    closeButton.addEventListener("click", close);
-    cancel.addEventListener("click", close);
-    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) close(); });
-    body.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      submit.disabled = true;
-      const normalized = Object.fromEntries(
-        Object.entries(values).map(([key, value]) => [key, String(value ?? "").trim()]),
-      );
+    const path = dashboard.url_path;
+    const backdrop = this._modal(lotusT("Ajouter une vue Lotus"));
+    const body = backdrop.querySelector(".modal-body");
+    const titleInput = document.createElement("input");
+    titleInput.placeholder = lotusT("Nom");
+    titleInput.value = lotusT("Nouvelle vue");
+    const pathInput = document.createElement("input");
+    pathInput.placeholder = lotusT("Chemin");
+    pathInput.value = "vue";
+    body.append(this._field("Nom", titleInput), this._field("Chemin", pathInput));
+    const primary = backdrop.querySelector(".text-button.primary");
+    primary.textContent = lotusT("Ajouter");
+    primary.onclick = async () => {
+      const config = deepClone(this._configs.get(path) || { views: [] });
+      config.views = Array.isArray(config.views) ? config.views : [];
+      const title = titleInput.value.trim() || lotusT("Nouvelle vue");
+      let viewPath = lotusSlugify(pathInput.value || title) || `vue-${config.views.length + 1}`;
+      const used = new Set(config.views.map((v) => v?.path).filter(Boolean));
+      if (used.has(viewPath)) viewPath = `${viewPath}-${config.views.length + 1}`;
+      config.views.push({ type: LOTUS_VIEW_TYPE, title, path: viewPath, lotus: { layers: [] }, cards: [] });
+      primary.disabled = true;
       try {
-        await onSubmit(normalized);
-        close();
-      } catch (error) {
-        submit.disabled = false;
-        this._error = error?.message || String(error);
+        await this._saveConfig(path, config);
+        backdrop.remove();
         this._renderContent();
+      } catch (error) {
+        alert(lotusT(`Ajout impossible : ${error?.message || error}`));
+        primary.disabled = false;
       }
-    });
-  }
-
-  async _createDashboard(values) {
-    const title = values.title || "Lotus View Studio";
-    const existingPaths = this._dashboards.map((item) => item.url_path);
-    let path = lotusSlugify(values.path || title, "lotus-dashboard");
-    if (!path.includes("-")) path = `lotus-${path}`;
-    path = this._uniquePath(path, existingPaths);
-    const viewTitle = values.view || lotusT("Accueil");
-    const viewPath = lotusSlugify(viewTitle, "accueil");
-
-    await this._hass.callWS({
-      type: "lovelace/dashboards/create",
-      title,
-      url_path: path,
-      icon: DEFAULT_DASHBOARD_ICON,
-      show_in_sidebar: true,
-      require_admin: false,
-    });
-
-    const config = {
-      title,
-      views: [{
-        title: viewTitle,
-        path: viewPath,
-        icon: "mdi:home-outline",
-        type: LOTUS_VIEW_TYPE,
-        cards: [],
-      }],
     };
-    await this._hass.callWS({ type: "lovelace/config/save", url_path: path, config });
-    await this._refresh();
-    this._openDashboard(path, viewPath);
   }
 
-  async _createView(dashboard, values) {
+  async _convertView(dashboard, index) {
     const path = dashboard.url_path;
     const config = deepClone(this._configs.get(path) || { views: [] });
-    if (!Array.isArray(config.views)) config.views = [];
-    const title = values.title || lotusT("Nouvelle vue");
-    const existing = config.views.map((view) => view?.path);
-    const viewPath = this._uniquePath(lotusSlugify(values.path || title, "vue"), existing);
-    config.views.push({ title, path: viewPath, type: LOTUS_VIEW_TYPE, cards: [] });
-    await this._hass.callWS({ type: "lovelace/config/save", url_path: path, config });
-    await this._refresh();
-    this._openDashboard(path, viewPath);
-  }
-
-  async _convertView(dashboard, sourceConfig, index) {
-    const path = dashboard.url_path;
-    const config = deepClone(sourceConfig || { views: [] });
     if (!config.views?.[index]) return;
-    config.views[index].type = LOTUS_VIEW_TYPE;
-    if (!Array.isArray(config.views[index].cards)) config.views[index].cards = [];
-    await this._hass.callWS({ type: "lovelace/config/save", url_path: path, config });
-    await this._refresh();
+    const view = config.views[index];
+    view.type = LOTUS_VIEW_TYPE;
+    view.lotus = view.lotus || { layers: [] };
+    try {
+      await this._saveConfig(path, config);
+      this._renderContent();
+    } catch (error) {
+      alert(lotusT(`Conversion impossible : ${error?.message || error}`));
+    }
+  }
+
+  _showLanguageDialog() {
+    const backdrop = this._modal(lotusT("Langue de l’interface"));
+    const body = backdrop.querySelector(".modal-body");
+    const select = document.createElement("select");
+    const autoLanguage = lotusGetAutomaticLanguage();
+    for (const language of LOTUS_LANGUAGES) {
+      const option = document.createElement("option");
+      option.value = language.value;
+      option.textContent = language.value === "auto"
+        ? `${lotusT("Automatique — Home Assistant")} (${autoLanguage})`
+        : `${language.nativeName} — ${language.englishName}`;
+      select.appendChild(option);
+    }
+    select.value = lotusGetLanguagePreference();
+    const info = document.createElement("div");
+    info.className = "notice";
+    info.textContent = `${lotusT("Suivre automatiquement la langue choisie dans Home Assistant.")} ${lotusT("La préférence est enregistrée pour votre utilisateur Home Assistant.")}`;
+    body.append(this._field("Langue", select), info);
+    const primary = backdrop.querySelector(".text-button.primary");
+    primary.textContent = lotusT("Appliquer");
+    primary.onclick = async () => {
+      primary.disabled = true;
+      try {
+        await lotusSetLanguagePreference(select.value, this._hass);
+        this._renderShell();
+        this._renderContent();
+        backdrop.remove();
+      } catch (error) {
+        alert(lotusT(`Impossible d’enregistrer la langue : ${error?.message || error}`));
+        primary.disabled = false;
+      }
+    };
+  }
+
+  _field(labelText, control) {
+    const label = document.createElement("label");
+    const text = document.createElement("span");
+    text.textContent = lotusT(labelText);
+    label.append(text, control);
+    return label;
+  }
+
+  _modal(titleText) {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML = `
+      <section class="modal" role="dialog" aria-modal="true">
+        <header class="modal-head">
+          <strong>${lotusT(titleText)}</strong>
+          <button class="text-button close" type="button">${lotusT("Fermer")}</button>
+        </header>
+        <div class="modal-body"></div>
+        <footer class="modal-foot">
+          <button class="text-button cancel" type="button">${lotusT("Annuler")}</button>
+          <button class="text-button primary" type="button">${lotusT("Enregistrer")}</button>
+        </footer>
+      </section>`;
+    const close = () => backdrop.remove();
+    backdrop.querySelector(".close").onclick = close;
+    backdrop.querySelector(".cancel").onclick = close;
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) close();
+    });
+    document.body.append(backdrop);
+    return backdrop;
   }
 }
 
-if (!customElements.get("lotus-visual-manager")) {
-  customElements.define("lotus-visual-manager", LotusVisualManager);
-}
+if (!customElements.get("lotus-visual-manager")) customElements.define("lotus-visual-manager", LotusVisualManager);
