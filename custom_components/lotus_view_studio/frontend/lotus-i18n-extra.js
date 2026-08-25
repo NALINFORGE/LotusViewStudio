@@ -1,10 +1,11 @@
+import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";
 /* Additional Lotus View Studio language packs introduced in 0.9.1.
  * English remains the safety fallback for any diagnostic string which has not
  * yet received a dedicated translation. User-facing controls are translated
  * here so every advertised language remains usable.
  */
 
-export const LOTUS_I18N_EXTRA_VERSION = "0.13.0b3";
+export const LOTUS_I18N_EXTRA_VERSION = LOTUS_PACKAGE_VERSION;
 
 export const LOTUS_EXTRA_LANGUAGES = Object.freeze([
   { value: "it", nativeName: "Italiano", englishName: "Italian" },

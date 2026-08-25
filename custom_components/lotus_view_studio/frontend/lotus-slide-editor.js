@@ -1,5 +1,5 @@
 /*
- * Lotus Slide editor UX patch for Lotus View Studio 0.13.0b3.
+ * Lotus Slide editor UX patch for Lotus View Studio current package.
  *
  * Goals:
  * - allow each side/end position to explicitly have no icon or image;
@@ -9,7 +9,7 @@
  * This module is loaded after lotus-slide-card.js and only patches the editor.
  */
 
-import { lotusT } from "./lotus-i18n.js?v=0.13.0b3";
+import { lotusT } from "./lotus-i18n.js";
 
 const MAX_SIDE_VISUAL_VALUES = 20;
 const DEFERRED_SIZE_KEYS = new Set([

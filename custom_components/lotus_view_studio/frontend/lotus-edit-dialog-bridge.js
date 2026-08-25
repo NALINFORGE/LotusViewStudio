@@ -1,5 +1,6 @@
+import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";
 /*
- * Lotus View Studio edit-dialog bridge — v0.13.0b3
+ * Lotus View Studio edit-dialog bridge — vcurrent package
  *
  * Home Assistant's native hui-dialog-edit-card owns two columns on desktop:
  *   - .element-editor  (ha-scrollbar)
@@ -25,7 +26,7 @@
  * frontend. Non-Lotus cards are not changed.
  */
 
-import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b3";
+import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js";
 
 const PATCHED = Symbol.for("lotusVisual.editDialogBridge.v0837");
 const CAPTURE_INSTALLED = Symbol.for("lotusVisual.editDialogCapture.v0837");
@@ -934,7 +935,7 @@ function installBridge() {
     .catch(() => {});
 
   window.LotusVisual = Object.assign(window.LotusVisual || {}, {
-    editDialogBridge: "0.13.0b3",
+    editDialogBridge: LOTUS_PACKAGE_VERSION,
     editDialogMode: "visual-preview-yaml-code-only",
   });
 }
