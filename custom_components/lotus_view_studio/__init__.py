@@ -1,6 +1,5 @@
 """Lotus View Studio: visual dashboard editing suite for Home Assistant."""
 
-import json
 from inspect import signature
 from pathlib import Path
 
@@ -16,30 +15,17 @@ from .const import (
     DOMAIN,
     LEGACY_BRAND_URL,
     LEGACY_URL_BASE,
+    MODULE_URL,
     PANEL_ICON,
     PANEL_PATH,
     PANEL_TITLE,
     URL_BASE,
-    VERSIONED_BRAND_URL,
-    VERSIONED_URL_BASE,
 )
 from .digicode_security import DigicodeSecurityManager, register_websocket_commands
 from .preferences import LotusVisualPreferences, register_preference_websocket_commands
 
-_COMPONENT_DIR = Path(__file__).parent
-_FRONTEND_DIR = _COMPONENT_DIR / "frontend"
-_BRAND_DIR = _COMPONENT_DIR / "brand"
-_MANIFEST_PATH = _COMPONENT_DIR / "manifest.json"
-
-
-def _package_version() -> str:
-    """Return the integration version declared by manifest.json."""
-    manifest = json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
-    version = str(manifest.get("version", "")).strip()
-    if not version:
-        raise ValueError("Lotus View Studio manifest.json does not declare a version")
-    return version
-
+_FRONTEND_DIR = Path(__file__).parent / "frontend"
+_BRAND_DIR = Path(__file__).parent / "brand"
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -55,11 +41,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.config_entries.async_update_entry(entry, title=PANEL_TITLE)
 
     data = hass.data.setdefault(DOMAIN, {})
-    package_version = _package_version()
-    versioned_url_base = f"{VERSIONED_URL_BASE}/{package_version}"
-    versioned_brand_url = f"{VERSIONED_BRAND_URL}/{package_version}"
-    module_url = f"{versioned_url_base}/lotus-visual.js"
-
     if not data.get("digicode_security"):
         digicode_security = DigicodeSecurityManager(hass)
         await digicode_security.async_load()
@@ -70,42 +51,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await preferences.async_load()
         register_preference_websocket_commands(hass, preferences)
         data["preferences"] = preferences
-
-    registered_versions = data.setdefault("static_versions", set())
-    if package_version not in registered_versions:
-        static_paths = [
-            # Versioned routes use their own namespace, so they never overlap
-            # compatibility routes left by an earlier Lotus release.
-            StaticPathConfig(versioned_url_base, str(_FRONTEND_DIR), cache_headers=True),
-            StaticPathConfig(versioned_brand_url, str(_BRAND_DIR), cache_headers=True),
-        ]
-
-        # Releases before 0.13.0b4 used a single static_registered flag and
-        # registered these aliases already. Honor that state during an in-place
-        # integration reload so routes are never registered twice.
-        compat_registered = bool(
-            data.get("compat_static_registered") or data.get("static_registered")
+    if not data.get("static_registered"):
+        await hass.http.async_register_static_paths(
+            [
+                StaticPathConfig(URL_BASE, str(_FRONTEND_DIR), cache_headers=False),
+                StaticPathConfig(BRAND_URL, str(_BRAND_DIR), cache_headers=False),
+                # Compatibility aliases for browser caches / manually registered
+                # resources from Lotus Visual releases prior to 0.12.0.
+                StaticPathConfig(LEGACY_URL_BASE, str(_FRONTEND_DIR), cache_headers=False),
+                StaticPathConfig(LEGACY_BRAND_URL, str(_BRAND_DIR), cache_headers=False),
+            ]
         )
-        if not compat_registered:
-            static_paths.extend(
-                [
-                    StaticPathConfig(URL_BASE, str(_FRONTEND_DIR), cache_headers=False),
-                    StaticPathConfig(BRAND_URL, str(_BRAND_DIR), cache_headers=False),
-                    StaticPathConfig(
-                        LEGACY_URL_BASE, str(_FRONTEND_DIR), cache_headers=False
-                    ),
-                    StaticPathConfig(
-                        LEGACY_BRAND_URL, str(_BRAND_DIR), cache_headers=False
-                    ),
-                ]
-            )
+        data["static_registered"] = True
 
-        await hass.http.async_register_static_paths(static_paths)
-        registered_versions.add(package_version)
-        data["compat_static_registered"] = True
-        data.pop("static_registered", None)
-
-    frontend.add_extra_js_url(hass, module_url)
+    frontend.add_extra_js_url(hass, MODULE_URL)
 
     panel_kwargs = {
         "hass": hass,
@@ -113,7 +72,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "webcomponent_name": "lotus-visual-manager",
         "sidebar_title": PANEL_TITLE,
         "sidebar_icon": PANEL_ICON,
-        "module_url": module_url,
+        "module_url": MODULE_URL,
         "require_admin": True,
     }
 
@@ -125,19 +84,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await panel_custom.async_register_panel(**panel_kwargs)
 
-    data[entry.entry_id] = {"module_url": module_url}
+    data[entry.entry_id] = {"module_url": MODULE_URL}
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload Lotus View Studio."""
     frontend.async_remove_panel(hass, PANEL_PATH, warn_if_unknown=False)
-    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
-    module_url = entry_data.get("module_url")
-    if module_url:
-        try:
-            frontend.remove_extra_js_url(hass, module_url)
-        except (KeyError, ValueError):
-            pass
+    try:
+        frontend.remove_extra_js_url(hass, MODULE_URL)
+    except (KeyError, ValueError):
+        pass
     hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return True

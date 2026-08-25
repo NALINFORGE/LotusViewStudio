@@ -1,6 +1,6 @@
-/* Refinements for the direct Lotus Slide preview editor. */
+/* Refinements for the 0.13.0b3 direct Lotus Slide preview editor. */
 
-import { lotusT } from "./lotus-i18n.js";
+import { lotusT } from "./lotus-i18n.js?v=0.13.0b3";
 
 const editorClass = customElements.get("lotus-slide-card-editor");
 

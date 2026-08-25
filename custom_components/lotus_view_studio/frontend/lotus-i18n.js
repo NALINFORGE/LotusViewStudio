@@ -1,17 +1,16 @@
-import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";
 import {
   LOTUS_EXTRA_LANGUAGES,
   LOTUS_EXTRA_EXACT,
   LOTUS_EXTRA_REPLACEMENTS,
   LOTUS_EXTRA_SELECTOR_LABELS,
   LOTUS_RTL_LANGUAGES,
-} from "./lotus-i18n-extra.js";
+} from "./lotus-i18n-extra.js?v=0.13.0b3";
 import {
   LOTUS_EUROPE_LANGUAGES,
   LOTUS_EUROPE_EXACT,
   LOTUS_EUROPE_REPLACEMENTS,
   LOTUS_EUROPE_SELECTOR_LABELS,
-} from "./lotus-i18n-europe.js";
+} from "./lotus-i18n-europe.js?v=0.13.0b3";
 
 /*
  * Lotus View Studio internationalization core.
@@ -19,7 +18,7 @@ import {
  * a per-user manual override persisted by the Lotus View Studio backend.
  */
 
-export const LOTUS_I18N_VERSION = LOTUS_PACKAGE_VERSION;
+export const LOTUS_I18N_VERSION = "0.13.0b3";
 
 export const LOTUS_LANGUAGES = Object.freeze([
   { value: "auto", nativeName: "Automatique — Home Assistant", englishName: "Automatic — Home Assistant" },
