@@ -22,6 +22,7 @@ jobs:
         shell: bash
         run: |
           sed -i 's#icon.png?v=${LOTUS_VISUAL_VERSION}#icon.png#' scripts/refactor_version_b4.py
+          sed -i '/^MODULE_URL =/d' custom_components/lotus_view_studio/const.py
           python scripts/refactor_version_b4.py
 
       - name: Verify diff
