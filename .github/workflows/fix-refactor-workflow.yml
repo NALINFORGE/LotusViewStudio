@@ -1,0 +1,41 @@
+name: Fix refactor workflow syntax
+
+on:
+  push:
+    branches:
+      - refactor/single-version-source-b4
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refactor/single-version-source-b4
+      - name: Fix generated Python block
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('.github/workflows/refactor-single-version-b4.yml')
+          text = path.read_text(encoding='utf-8')
+          old = "          renames = {\\n              'lotus-slide-editor-b1.js': 'lotus-slide-editor.js',\\n              'lotus-slide-editor-direct-b1.js': 'lotus-slide-editor-direct.js',\\n              'lotus-slide-editor-direct-fix-b1.js': 'lotus-slide-editor-direct-fix.js',\\n          }"
+          new = """          renames = {
+              'lotus-slide-editor-b1.js': 'lotus-slide-editor.js',
+              'lotus-slide-editor-direct-b1.js': 'lotus-slide-editor-direct.js',
+              'lotus-slide-editor-direct-fix-b1.js': 'lotus-slide-editor-direct-fix.js',
+          }"""
+          if old not in text:
+              raise SystemExit('Expected malformed renames block was not found')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+      - name: Commit workflow fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/refactor-single-version-b4.yml
+          git commit -m "Fix refactor workflow Python syntax"
+          git push origin HEAD:refactor/single-version-source-b4
