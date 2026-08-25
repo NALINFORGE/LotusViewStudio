@@ -1,7 +1,7 @@
 /*
  * Lotus View Studio custom-card registry.
  */
-import { lotusT } from "./lotus-i18n.js";
+import { lotusT } from "./lotus-i18n.js?v=0.13.0b3";
 
 export const LOTUS_STACK_CARD_ENTRY = Object.freeze({
   type: "lotus-visual-stack",

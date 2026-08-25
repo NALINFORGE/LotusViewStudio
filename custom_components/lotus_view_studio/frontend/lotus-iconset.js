@@ -1,10 +1,9 @@
-import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";
 /* Lotus View Studio custom icon set.
  * Registered globally so the Home Assistant sidebar can use the Lotus brand
  * mark without requiring an external custom-icons integration.
  */
 
-const LOTUS_ICONSET_VERSION = LOTUS_PACKAGE_VERSION;
+const LOTUS_ICONSET_VERSION = "0.13.0b3";
 
 // 24x24 monochrome sidebar icon: a simplified Lotus inside a window frame.
 // It follows currentColor so Home Assistant controls selected/unselected colors.

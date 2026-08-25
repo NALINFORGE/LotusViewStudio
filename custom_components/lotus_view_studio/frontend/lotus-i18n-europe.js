@@ -1,6 +1,5 @@
-import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";
-/* European language pack for Lotus View Studio. */
-export const LOTUS_EUROPE_VERSION = LOTUS_PACKAGE_VERSION;
+/* European language pack for Lotus View Studio 0.13.0b3. */
+export const LOTUS_EUROPE_VERSION = "0.13.0b3";
 export const LOTUS_EUROPE_LANGUAGES = Object.freeze([
   { value: "nl", nativeName: "Nederlands", englishName: "Dutch" },
   { value: "pl", nativeName: "Polski", englishName: "Polish" },
