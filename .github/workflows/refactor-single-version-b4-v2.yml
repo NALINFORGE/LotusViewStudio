@@ -19,7 +19,10 @@ jobs:
           ref: refactor/single-version-source-b4
 
       - name: Apply single-version refactor
-        run: python scripts/refactor_version_b4.py
+        shell: bash
+        run: |
+          sed -i 's#icon.png?v=${LOTUS_VISUAL_VERSION}#icon.png#' scripts/refactor_version_b4.py
+          python scripts/refactor_version_b4.py
 
       - name: Verify diff
         run: git diff --check
