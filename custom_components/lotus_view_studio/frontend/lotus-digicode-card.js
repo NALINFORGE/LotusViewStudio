@@ -8,8 +8,8 @@
  * 3) application-layer RSA-OAEP transport + server-side salted PIN hash.
  */
 
-import { deepClone, clamp } from "./lotus-core.js?v=0.13.0b3";
-import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b3";
+import { deepClone, clamp } from "./lotus-core.js";
+import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js";
 
 const LOTUS_DIGICODE_VERSION = "1.3.7";
 const LOTUS_DIGICODE_TYPE = "custom:lotus-digicode-card";

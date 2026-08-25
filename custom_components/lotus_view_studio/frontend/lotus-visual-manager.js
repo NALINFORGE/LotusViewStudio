@@ -4,7 +4,7 @@ import {
   lotusSlugify,
   lotusThemeCss,
   makeIconButton,
-} from "./lotus-core.js?v=0.13.0b3";
+} from "./lotus-core.js";
 import {
   LOTUS_LANGUAGES,
   lotusGetAutomaticLanguage,
@@ -13,9 +13,11 @@ import {
   lotusSetHass,
   lotusSetLanguagePreference,
   lotusT,
-} from "./lotus-i18n.js?v=0.13.0b3";
+} from "./lotus-i18n.js";
 
-const LOTUS_BRAND_ICON_URL = `/lotus_view_studio_brand/icon.png?v=${LOTUS_VISUAL_VERSION}`;
+const LOTUS_BRAND_ICON_URL = LOTUS_VISUAL_VERSION === "dev"
+  ? "/lotus_view_studio_brand/icon.png"
+  : `/lotus_view_studio_brand_v/${encodeURIComponent(LOTUS_VISUAL_VERSION)}/icon.png`;
 const DEFAULT_VIEW_ICON = "mdi:view-dashboard-outline";
 const LOTUS_VIEW_TYPE = "custom:lotus-visual-layout";
 

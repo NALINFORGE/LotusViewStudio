@@ -1,5 +1,6 @@
+import { LOTUS_PACKAGE_VERSION } from "./lotus-version.js";
 /*
- * Lotus View Studio direct-create bridge — v0.13.0b3
+ * Lotus View Studio direct-create bridge
  *
  * Goal
  * ----
@@ -203,7 +204,7 @@ function installCaptureBridge() {
     .catch(() => {});
 
   window.LotusVisual = Object.assign(window.LotusVisual || {}, {
-    directCreateBridge: "0.13.0b3",
+    directCreateBridge: LOTUS_PACKAGE_VERSION,
     directCreateMode: "capture-import-before-dialog",
   });
 }
