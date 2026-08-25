@@ -38,6 +38,7 @@ def _package_version() -> str:
         raise ValueError("Lotus View Studio manifest.json does not declare a version")
     return version
 
+
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
@@ -56,6 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     versioned_url_base = f"{URL_BASE}/{package_version}"
     versioned_brand_url = f"{BRAND_URL}/{package_version}"
     module_url = f"{versioned_url_base}/lotus-visual.js"
+
     if not data.get("digicode_security"):
         digicode_security = DigicodeSecurityManager(hass)
         await digicode_security.async_load()
@@ -66,21 +68,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await preferences.async_load()
         register_preference_websocket_commands(hass, preferences)
         data["preferences"] = preferences
-    if not data.get("static_registered"):
-        await hass.http.async_register_static_paths(
-            [
-                # The package version is part of the URL. All relative ES-module
-                # imports therefore share one immutable cache namespace.
-                StaticPathConfig(versioned_url_base, str(_FRONTEND_DIR), cache_headers=True),
-                StaticPathConfig(versioned_brand_url, str(_BRAND_DIR), cache_headers=True),
-                # Keep unversioned and legacy aliases for existing manual resources.
-                StaticPathConfig(URL_BASE, str(_FRONTEND_DIR), cache_headers=False),
-                StaticPathConfig(BRAND_URL, str(_BRAND_DIR), cache_headers=False),
-                StaticPathConfig(LEGACY_URL_BASE, str(_FRONTEND_DIR), cache_headers=False),
-                StaticPathConfig(LEGACY_BRAND_URL, str(_BRAND_DIR), cache_headers=False),
-            ]
+
+    registered_versions = data.setdefault("static_versions", set())
+    if package_version not in registered_versions:
+        static_paths = [
+            # The package version is part of the URL. All relative ES-module
+            # imports therefore share the same cache namespace.
+            StaticPathConfig(versioned_url_base, str(_FRONTEND_DIR), cache_headers=True),
+            StaticPathConfig(versioned_brand_url, str(_BRAND_DIR), cache_headers=True),
+        ]
+
+        # Releases before 0.13.0b4 used a single static_registered flag and
+        # registered these aliases already. Honor that state during an in-place
+        # integration reload so routes are never registered twice.
+        compat_registered = bool(
+            data.get("compat_static_registered") or data.get("static_registered")
         )
-        data["static_registered"] = True
+        if not compat_registered:
+            static_paths.extend(
+                [
+                    StaticPathConfig(URL_BASE, str(_FRONTEND_DIR), cache_headers=False),
+                    StaticPathConfig(BRAND_URL, str(_BRAND_DIR), cache_headers=False),
+                    StaticPathConfig(
+                        LEGACY_URL_BASE, str(_FRONTEND_DIR), cache_headers=False
+                    ),
+                    StaticPathConfig(
+                        LEGACY_BRAND_URL, str(_BRAND_DIR), cache_headers=False
+                    ),
+                ]
+            )
+
+        await hass.http.async_register_static_paths(static_paths)
+        registered_versions.add(package_version)
+        data["compat_static_registered"] = True
+        data.pop("static_registered", None)
 
     frontend.add_extra_js_url(hass, module_url)
 
