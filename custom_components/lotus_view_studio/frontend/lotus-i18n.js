@@ -4,13 +4,13 @@ import {
   LOTUS_EXTRA_REPLACEMENTS,
   LOTUS_EXTRA_SELECTOR_LABELS,
   LOTUS_RTL_LANGUAGES,
-} from "./lotus-i18n-extra.js?v=0.13.0b3";
+} from "./lotus-i18n-extra.js?v=0.13.0b4";
 import {
   LOTUS_EUROPE_LANGUAGES,
   LOTUS_EUROPE_EXACT,
   LOTUS_EUROPE_REPLACEMENTS,
   LOTUS_EUROPE_SELECTOR_LABELS,
-} from "./lotus-i18n-europe.js?v=0.13.0b3";
+} from "./lotus-i18n-europe.js?v=0.13.0b4";
 
 /*
  * Lotus View Studio internationalization core.
@@ -18,7 +18,7 @@ import {
  * a per-user manual override persisted by the Lotus View Studio backend.
  */
 
-export const LOTUS_I18N_VERSION = "0.13.0b3";
+export const LOTUS_I18N_VERSION = "0.13.0b4";
 
 export const LOTUS_LANGUAGES = Object.freeze([
   { value: "auto", nativeName: "Automatique — Home Assistant", englishName: "Automatic — Home Assistant" },
@@ -734,6 +734,22 @@ const EXACT_EN = {
   "verticale": "vertical",
   "horizontale": "horizontal",
 
+  "Action après validation du PIN": "Action after PIN validation",
+  "Choisissez l’action avant d’enregistrer le PIN. Le PIN et cette action sont enregistrés ensemble côté serveur.": "Choose the action before saving the PIN. The PIN and this action are stored together on the server.",
+  "Cette action est exécutée automatiquement lorsque le code saisi est correct.": "This action is executed automatically when the entered code is correct.",
+  "Action modifiée : réenregistrez le PIN et l’action sur le serveur pour appliquer cette modification.": "Action changed: save the PIN and action on the server again to apply this change.",
+  "Action modifiée : saisissez de nouveau le PIN puis enregistrez le PIN et l’action sur le serveur.": "Action changed: enter the PIN again, then save the PIN and action on the server.",
+  "PIN, sécurité et action": "PIN, security and action",
+  "Format et contour du digicode": "Keypad size and frame",
+  "Touches numériques": "Numeric keys",
+  "Touches de correction": "Correction keys",
+  "Retours correct / erreur": "Success / error feedback",
+  "Configuration du digicode": "Keypad configuration",
+  "Revenir au mode édition": "Return to edit mode",
+  "Tester le digicode": "Test the keypad",
+  "MODE TEST — validation réelle du PIN, aucune action Home Assistant exécutée": "TEST MODE — real PIN validation, no Home Assistant action is executed",
+  "Tester le slider": "Test the slider",
+  "MODE TEST — simulation, aucune action Home Assistant exécutée": "TEST MODE — simulation, no Home Assistant action is executed",
 };
 
 const EXACT_DE = {
@@ -1420,6 +1436,22 @@ const EXACT_DE = {
   "verticale": "vertikal",
   "horizontale": "horizontal",
 
+  "Action après validation du PIN": "Aktion nach PIN-Prüfung",
+  "Choisissez l’action avant d’enregistrer le PIN. Le PIN et cette action sont enregistrés ensemble côté serveur.": "Wählen Sie die Aktion aus, bevor Sie die PIN speichern. PIN und Aktion werden gemeinsam auf dem Server gespeichert.",
+  "Cette action est exécutée automatiquement lorsque le code saisi est correct.": "Diese Aktion wird automatisch ausgeführt, wenn der eingegebene Code korrekt ist.",
+  "Action modifiée : réenregistrez le PIN et l’action sur le serveur pour appliquer cette modification.": "Aktion geändert: Speichern Sie PIN und Aktion erneut auf dem Server, um die Änderung anzuwenden.",
+  "Action modifiée : saisissez de nouveau le PIN puis enregistrez le PIN et l’action sur le serveur.": "Aktion geändert: Geben Sie die PIN erneut ein und speichern Sie anschließend PIN und Aktion auf dem Server.",
+  "PIN, sécurité et action": "PIN, Sicherheit und Aktion",
+  "Format et contour du digicode": "Größe und Rahmen des Tastenfelds",
+  "Touches numériques": "Zifferntasten",
+  "Touches de correction": "Korrekturtasten",
+  "Retours correct / erreur": "Rückmeldung Erfolg / Fehler",
+  "Configuration du digicode": "Tastenfeld-Konfiguration",
+  "Revenir au mode édition": "Zurück zum Bearbeitungsmodus",
+  "Tester le digicode": "Tastenfeld testen",
+  "MODE TEST — validation réelle du PIN, aucune action Home Assistant exécutée": "TESTMODUS — echte PIN-Prüfung, keine Home-Assistant-Aktion wird ausgeführt",
+  "Tester le slider": "Slider testen",
+  "MODE TEST — simulation, aucune action Home Assistant exécutée": "TESTMODUS — Simulation, keine Home-Assistant-Aktion wird ausgeführt",
 
 };
 

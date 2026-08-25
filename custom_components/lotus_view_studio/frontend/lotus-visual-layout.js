@@ -9,10 +9,10 @@ import {
   makeIconButton,
   fireEvent,
   lotusTabEdgeBorderPath,
-} from "./lotus-core.js?v=0.13.0b3";
-import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b3";
-import { registerLotusStackCard, registerLotusSlideCard, registerLotusDigicodeCard } from "./lotus-card-registry.js?v=0.13.0b3";
-import { openLotusTabsEditor } from "./lotus-tabs-editor.js?v=0.13.0b3";
+} from "./lotus-core.js?v=0.13.0b4";
+import { lotusDebug, lotusSetHass, lotusT } from "./lotus-i18n.js?v=0.13.0b4";
+import { registerLotusStackCard, registerLotusSlideCard, registerLotusDigicodeCard } from "./lotus-card-registry.js?v=0.13.0b4";
+import { openLotusTabsEditor } from "./lotus-tabs-editor.js?v=0.13.0b4";
 
 const DEFAULT_LAYOUT = Object.freeze({ x: 2, y: 2, width: 30, height: 18, locked: false, z: 1 });
 
@@ -236,6 +236,31 @@ const slideConfigFromCard = (config) => {
   if (config.type === "custom:lotus-slide-card") return config;
   if (isNativeConditionalConfig(config)) return slideConfigFromCard(config.card);
   return null;
+};
+
+const makeFreshDigicodePinId = () => {
+  const suffix = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 12)
+    : Math.random().toString(36).slice(2, 14);
+  return `digicode_${suffix}`;
+};
+
+// A duplicated or pasted server-secured Digicode must never reuse the source
+// server identity. The PIN itself is not in Lovelace, but pin_id points to the
+// server-side PIN + protected action. Reusing it would make two visual cards
+// share one security record.
+const withFreshDigicodeServerIdentity = (cardConfig) => {
+  const copy = deepClone(cardConfig);
+  const digicode = digicodeConfigFromCard(copy);
+  const mode = String(digicode?.security?.mode ?? "");
+  if (digicode && (mode === "server_plain" || mode === "server_encrypted")) {
+    digicode.security = {
+      ...(digicode.security && typeof digicode.security === "object" ? digicode.security : {}),
+      pin_id: makeFreshDigicodePinId(),
+      revision: 0,
+    };
+  }
+  return copy;
 };
 
 const modalBlockerEnabled = (config) => Boolean(
@@ -5358,7 +5383,7 @@ class LotusVisualLayout extends HTMLElement {
     };
     if (!targetTabId) delete copyLayout.tab;
 
-    const cleanCopy = this._withCleanLotusLayout(deepClone(clipboard.card), copyLayout, insertedIndex);
+    const cleanCopy = this._withCleanLotusLayout(withFreshDigicodeServerIdentity(clipboard.card), copyLayout, insertedIndex);
     view.cards.push(cleanCopy);
 
     // The cards setter can be called by Home Assistant while saveConfig is
@@ -5408,7 +5433,7 @@ class LotusVisualLayout extends HTMLElement {
     const original = view?.cards?.[this._selectedIndex];
     if (!view || !original) return;
 
-    const copy = deepClone(original);
+    const copy = withFreshDigicodeServerIdentity(original);
     const sourceLayout = this._readStoredLayout(this._selectedIndex);
     const width = sourceLayout.width;
     const height = sourceLayout.height;

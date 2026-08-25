@@ -1,5 +1,5 @@
 /*
- * Lotus View Studio native picture-elements image-fit bridge — v0.13.0b3
+ * Lotus View Studio native picture-elements image-fit bridge — v0.13.0b4
  *
  * Home Assistant's hui-image component supports fitMode (cover/contain/fill),
  * but hui-image-element currently does not forward such a property to it.
@@ -61,5 +61,5 @@ if (existing) {
 }
 
 window.LotusVisual = Object.assign(window.LotusVisual || {}, {
-  imageFitBridge: "0.13.0b3",
+  imageFitBridge: "0.13.0b4",
 });
