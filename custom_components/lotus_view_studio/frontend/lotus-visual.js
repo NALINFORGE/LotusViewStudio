@@ -1,7 +1,7 @@
 // Bootstrap version is intentionally local: the first import must itself be
 // cache-busted. A static import of lotus-core.js could otherwise survive an
 // integration upgrade in the browser ESM module map.
-const LOTUS_VISUAL_BOOTSTRAP_VERSION = "0.13.0b4";
+const LOTUS_VISUAL_BOOTSTRAP_VERSION = "0.13.0b5";
 await import(`./lotus-iconset.js?v=${LOTUS_VISUAL_BOOTSTRAP_VERSION}`);
 const { LOTUS_VISUAL_VERSION } = await import(`./lotus-core.js?v=${LOTUS_VISUAL_BOOTSTRAP_VERSION}`);
 
