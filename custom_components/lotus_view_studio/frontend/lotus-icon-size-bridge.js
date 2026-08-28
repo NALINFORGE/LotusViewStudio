@@ -1,15 +1,19 @@
 /*
- * Lotus View Studio native picture-elements responsive bridge — v0.13.0b4
+ * Lotus View Studio native picture-elements responsive bridge — v0.13.0b5
  *
  * Lotus Stack is deliberately saved as a native Home Assistant picture-elements
  * card. Native state-icon/state-label elements do not know the logical Lotus
  * cell size, so this bridge uses the metadata written into their styles to
  * shrink icons and text when the rendered dashboard becomes smaller.
+ *
+ * v0.13.0b5: also constrains icon/image nodes nested in Home Assistant's open
+ * shadow roots. This is required for camera entities and other state badges
+ * whose visual can otherwise keep an intrinsic desktop-sized geometry on phones.
  */
 
-const ICON_PATCHED = Symbol.for("lotusVisual.iconSizeBridge.v0812");
-const LABEL_PATCHED = Symbol.for("lotusVisual.labelSizeBridge.v0812");
-const OBSERVER = Symbol.for("lotusVisual.responsiveBridge.observer.v0812");
+const ICON_PATCHED = Symbol.for("lotusVisual.iconSizeBridge.v0130b5");
+const LABEL_PATCHED = Symbol.for("lotusVisual.labelSizeBridge.v0130b5");
+const OBSERVER = Symbol.for("lotusVisual.responsiveBridge.observer.v0130b5");
 const MIN_PERCENT = 1;
 const MAX_PERCENT = 100;
 
@@ -53,6 +57,56 @@ function requestedIcon(host) {
   return Math.max(MIN_PERCENT, Math.min(MAX_PERCENT, raw || 20));
 }
 
+const SIZED_VISUAL_SELECTOR = [
+  "ha-state-icon",
+  "ha-icon",
+  "ha-svg-icon",
+  "iron-icon",
+  "svg",
+  "img",
+  ".icon",
+  ".entity-picture",
+  "[part='icon']",
+].join(",");
+
+function sizeVisualNode(node, size) {
+  if (!node?.style) return;
+
+  node.style.setProperty("--mdc-icon-size", size, "important");
+  node.style.setProperty("--ha-icon-size", size, "important");
+
+  const tag = String(node.localName || "").toLowerCase();
+  const isVisual = ["ha-state-icon", "ha-icon", "ha-svg-icon", "iron-icon", "svg", "img"].includes(tag)
+    || node.matches?.(".icon,.entity-picture,[part='icon']");
+  if (!isVisual) return;
+
+  node.style.setProperty("width", size, "important");
+  node.style.setProperty("height", size, "important");
+  node.style.setProperty("max-width", size, "important");
+  node.style.setProperty("max-height", size, "important");
+  node.style.setProperty("box-sizing", "border-box", "important");
+
+  if (tag === "img" || tag === "svg") {
+    node.style.setProperty("display", "block", "important");
+    node.style.setProperty("object-fit", "contain", "important");
+  }
+}
+
+function sizeOpenShadowTree(root, size, depth = 0) {
+  if (!root || depth > 5) return;
+
+  for (const node of root.querySelectorAll?.(SIZED_VISUAL_SELECTOR) || []) {
+    sizeVisualNode(node, size);
+  }
+
+  // HA frequently nests ha-state-icon -> ha-icon -> ha-svg-icon in separate
+  // open shadow roots. Walk those roots as well so mobile camera/state visuals
+  // cannot retain an intrinsic desktop size while only the outer badge shrinks.
+  for (const node of root.querySelectorAll?.("*") || []) {
+    if (node.shadowRoot) sizeOpenShadowTree(node.shadowRoot, size, depth + 1);
+  }
+}
+
 function applyIconSize(host) {
   const percent = requestedIcon(host);
   if (percent === null) return;
@@ -70,14 +124,25 @@ function applyIconSize(host) {
     host.style.setProperty("place-items", "center", "important");
   }
   host.style.setProperty("--mdc-icon-size", size, "important");
+  host.style.setProperty("--ha-icon-size", size, "important");
+
+  // Apply immediately to whatever HA has already rendered, even when the
+  // current frontend no longer exposes the visual through state-badge exactly
+  // as previous releases did.
+  sizeOpenShadowTree(host.shadowRoot, size);
 
   const badge = host.shadowRoot?.querySelector("state-badge");
   if (!badge) return;
   badge.style.setProperty("width", size, "important");
   badge.style.setProperty("height", size, "important");
+  badge.style.setProperty("max-width", size, "important");
+  badge.style.setProperty("max-height", size, "important");
   badge.style.setProperty("display", "grid", "important");
   badge.style.setProperty("place-items", "center", "important");
+  badge.style.setProperty("box-sizing", "border-box", "important");
+  badge.style.setProperty("overflow", "hidden", "important");
   badge.style.setProperty("--mdc-icon-size", size, "important");
+  badge.style.setProperty("--ha-icon-size", size, "important");
 
   const visualBackground = String(host.style.getPropertyValue("--lotus-vs-visual-background") || "").trim();
   if (visualBackground === "none") {
@@ -87,8 +152,7 @@ function applyIconSize(host) {
     badge.style.setProperty("border-radius", "50%", "important");
   }
 
-  const stateIcon = badge.shadowRoot?.querySelector("ha-state-icon");
-  if (stateIcon) stateIcon.style.setProperty("--mdc-icon-size", size, "important");
+  sizeOpenShadowTree(badge.shadowRoot, size);
 }
 
 function visibleText(host) {
@@ -129,8 +193,17 @@ function applyLabelSize(host) {
 
 function schedule(host, apply) {
   queueMicrotask(() => apply(host));
-  window.requestAnimationFrame(() => apply(host));
-  Promise.resolve(host?.updateComplete).then(() => apply(host));
+  window.requestAnimationFrame(() => {
+    apply(host);
+    // Nested HA icon components can finish their own render one frame later.
+    window.requestAnimationFrame(() => apply(host));
+  });
+  Promise.resolve(host?.updateComplete).then(() => {
+    apply(host);
+    // Covers state-badge / camera entity-picture content inserted after the
+    // parent Lit update has resolved.
+    window.setTimeout(() => apply(host), 0);
+  });
 }
 
 function ensureObserver(host, apply) {
@@ -197,6 +270,6 @@ if (labelClass) installLabelBridge(labelClass);
 else customElements.whenDefined("hui-state-label-element").then(() => installLabelBridge(customElements.get("hui-state-label-element")));
 
 window.LotusVisual = Object.assign(window.LotusVisual || {}, {
-  iconSizeBridge: "0.13.0b4",
-  stackResponsiveBridge: "0.13.0b4",
+  iconSizeBridge: "0.13.0b5",
+  stackResponsiveBridge: "0.13.0b5",
 });
